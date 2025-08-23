@@ -11,7 +11,7 @@ namespace pips {
 #define STACK_MAX 256 
 #endif
 
-using Real = long double;;
+using Real = long double;
 
 } // namespace pips
 
