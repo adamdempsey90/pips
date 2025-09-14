@@ -314,8 +314,9 @@ struct Scanner {
       }
       break;
     }
-    // ifdef this back in?
-    // case 'v': return checkKeyword(1, 2, "ar", TokenType::VAR);
+#ifndef NO_VAR_DECL
+    case 'v': return checkKeyword(1, 2, "ar", TokenType::VAR);
+#endif
     case 'w':
       return checkKeyword(1, 4, "hile", TokenType::WHILE);
       // default: return TokenType::STRING;

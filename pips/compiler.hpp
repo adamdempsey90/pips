@@ -368,7 +368,7 @@ struct Compiler {
     }
     Local *local = &current->locals[current->localCount++];
     local->name = name;
-    local->depth = -1;
+    local->depth = current->scopeDepth;
   }
   bool identifiersEqual(Token *a, Token *b) {
     if (a->length != b->length) return false;
@@ -389,6 +389,12 @@ struct Compiler {
     addLocal(*name);
   }
   void varDeclarationNoVar() {
+    // TODO:
+    // This does not handle scope correctly
+    // Related to the different handling of a variable declaration and a statement
+    // if (some condition) {
+    //   return statement();
+    //}
     declareVariable();
     uint8_t global = (current->scopeDepth > 0) ? 0 : identifierConstant(&parser.previous);
     if (match(TokenType::EQUAL)) {
@@ -816,12 +822,17 @@ struct Compiler {
   void declaration() {
     // var = 2;
     // check if var is defined
-
-    if (match(TokenType::IDENTIFIER)) {
-      varDeclarationNoVar();
-    } else if (match(TokenType::VAR)) {
+    if (match(TokenType::VAR)) {
       varDeclaration();
-    } else {
+    } 
+#ifdef NO_VAR_DECL
+   // This should sometimes go down the statement path 
+   // if we are updating a variable that was declared in a lower scope
+    else if (match(TokenType::IDENTIFIER)) {
+      varDeclarationNoVar();
+    }
+#endif
+    else {
       statement();
     }
     if (parser.panicMode) synchronize();
