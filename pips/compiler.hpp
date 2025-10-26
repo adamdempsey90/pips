@@ -125,7 +125,7 @@ struct Compiler {
                                                         nullptr,          // COMMA
                                                         nullptr,          // DOT
                                                         &Compiler::unary, // MINUS
-                                                        nullptr,          // PLUS
+                                                        &Compiler::unary, // PLUS
                                                         nullptr,          // SEMICOLON
                                                         nullptr,          // MOD
                                                         nullptr,          // SLASH
@@ -559,6 +559,9 @@ struct Compiler {
     switch (op_type) {
     case TokenType::MINUS:
       emitByte(OpCode::NEGATE);
+      break;
+    case TokenType::PLUS:
+      emitByte(OpCode::UPLUS);
       break;
     case TokenType::BANG:
       emitByte(OpCode::NOT);

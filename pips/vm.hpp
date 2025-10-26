@@ -176,6 +176,14 @@ struct VM {
         push(NUMBER_VAL(-AS_NUMBER(pop())));
         break;
       }
+      case OpCode::UPLUS: {
+        if (!IS_NUMBER(peek(0))) {
+          runtimeError("Operand must be a number");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        push(NUMBER_VAL(AS_NUMBER(pop())));
+        break;
+      }
       case OpCode::EXP: {
         if (!IS_NUMBER(peek(0))) {
           runtimeError("Operand must be a number");

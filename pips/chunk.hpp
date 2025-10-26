@@ -18,6 +18,7 @@ enum OpCode {
   TRUE,
   FALSE,
   NEGATE,
+  UPLUS,
   ADD,
   SUBTRACT,
   MULTIPLY,
@@ -127,6 +128,8 @@ struct Chunk {
       return Instruction<OpCode::RETURN>("OP_RETURN", i);
     case OpCode::NEGATE:
       return Instruction<OpCode::NEGATE>("OP_NEGATE", i);
+    case OpCode::UPLUS:
+      return Instruction<OpCode::UPLUS>("OP_UPLUS", i);
     case OpCode::ADD:
       return Instruction<OpCode::ADD>("OP_ADD", i);
     case OpCode::MULTIPLY:
