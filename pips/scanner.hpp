@@ -79,6 +79,11 @@ enum class TokenType : unsigned int {
   FLOOR,
   // LOG2, sinh, cosh, tanh, erf, tgamma, round,
 
+  // special binary functions
+  ATAN2,
+  MIN,
+  MAX,
+
   ERROR,
   END
 };
@@ -203,9 +208,13 @@ struct Scanner {
           return checkKeyword(2, 2, "os", TokenType::ACOS);
         case 's':
           return checkKeyword(2, 2, "in", TokenType::ASIN);
-        case 't':
-          return checkKeyword(2, 2, "an", TokenType::ATAN);
-        }
+        case 't': {
+          if (matchKeyword(2, 3, "an2"))
+            return TokenType::ATAN2;
+          else if (matchKeyword(2, 2, "an"))
+            return TokenType::ATAN;
+        } 
+       }
       }
       break;
     }
@@ -265,6 +274,17 @@ struct Scanner {
       }
       break;
     }
+    case 'm': {
+      if (current - start > 1) {
+        switch (start[1]) {
+        case 'i':
+          return checkKeyword(2, 1, "n", TokenType::MIN);
+        case 'a':
+          return checkKeyword(2, 1, "x", TokenType::MAX);
+        }
+      }
+      break;
+    }
     case 'n':
       return checkKeyword(1, 2, "il", TokenType::NIL);
     case 'o':
@@ -291,9 +311,8 @@ struct Scanner {
           if (matchKeyword(2, 2, "gn"))
             return TokenType::SIGN;
           else if (matchKeyword(2, 1, "n"))
-            return TokenType::SIN;
-          else
-            return TokenType::IDENTIFIER;
+          return TokenType::SIN;
+
         }
         case 'q':
           return checkKeyword(2, 2, "rt", TokenType::SQRT);

@@ -44,7 +44,11 @@ enum OpCode {
   ATAN,
   CEIL,
   FLOOR,
+  ATAN2,
+  MIN,
+  MAX,
   PRINT,
+  NEWLINE,
   POP,
   DEFINE_GLOBAL,
   GET_GLOBAL,
@@ -180,12 +184,20 @@ struct Chunk {
       return Instruction<OpCode::ASIN>("OP_ASIN", i);
     case OpCode::ATAN:
       return Instruction<OpCode::ATAN>("OP_ATAN", i);
+    case OpCode::ATAN2:
+      return Instruction<OpCode::ATAN2>("OP_ATAN2", i);
+    case OpCode::MIN:
+      return Instruction<OpCode::MIN>("OP_MIN", i);
+    case OpCode::MAX:
+      return Instruction<OpCode::MAX>("OP_MAX", i);
     case OpCode::CEIL:
       return Instruction<OpCode::CEIL>("OP_CEIL", i);
     case OpCode::FLOOR:
       return Instruction<OpCode::FLOOR>("OP_FLOOR", i);
     case OpCode::PRINT:
       return Instruction<OpCode::RETURN>("OP_PRINT", i);
+    case OpCode::NEWLINE:
+      return Instruction<OpCode::RETURN>("OP_NEWLINE", i);
     case OpCode::POP:
       return Instruction<OpCode::POP>("OP_POP", i);
     case OpCode::DEFINE_GLOBAL:

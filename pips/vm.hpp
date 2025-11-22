@@ -72,7 +72,7 @@ enum class InterpretResult { OK, COMPILE_ERROR, RUNTIME_ERROR };
     push(valueType(static_cast<Real>(static_cast<int>(a / b))));                  \
   } while (false)
 
-#define POWER_OP(valueType)                                                              \
+#define STD_BINARY_OP(func,valueType)                                                              \
   do {                                                                                   \
     if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                                    \
       runtimeError("Operands must be numbers.");                                         \
@@ -80,7 +80,7 @@ enum class InterpretResult { OK, COMPILE_ERROR, RUNTIME_ERROR };
     }                                                                                    \
     Real b = AS_NUMBER(pop());                                                    \
     Real a = AS_NUMBER(pop());                                                    \
-    push(valueType(std::pow(a, b)));                                                     \
+    push(valueType(func(a, b)));                                                     \
   } while (false)
 
 struct VM {
@@ -280,6 +280,18 @@ struct VM {
         push(NUMBER_VAL(std::atan(AS_NUMBER(pop()))));
         break;
       }
+      case OpCode::ATAN2: {
+        STD_BINARY_OP(std::atan2, NUMBER_VAL);
+        break;
+      }
+      case OpCode::MIN: {
+        STD_BINARY_OP(std::min, NUMBER_VAL);
+        break;
+      }
+      case OpCode::MAX: {
+        STD_BINARY_OP(std::max, NUMBER_VAL);
+        break;
+      }
       case OpCode::CEIL: {
         if (!IS_NUMBER(peek(0))) {
           runtimeError("Operand must be a number");
@@ -330,7 +342,7 @@ struct VM {
         break;
       }
       case OpCode::POW: {
-        POWER_OP(NUMBER_VAL);
+        STD_BINARY_OP(std::pow, NUMBER_VAL);
         break;
       }
       case OpCode::NOT: {
@@ -420,6 +432,9 @@ struct VM {
         break;
       case OpCode::PRINT: {
         printValue(pop());
+        break;
+      }
+      case OpCode::NEWLINE: {
         printf("\n");
         break;
       }

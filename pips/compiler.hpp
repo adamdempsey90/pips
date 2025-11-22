@@ -118,7 +118,7 @@ struct Compiler {
       Precedence::AND,   Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 58> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 62> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -154,6 +154,7 @@ struct Compiler {
                                                         &Compiler::literal,  // NIL
                                                         nullptr,             // OR
                                                         nullptr,             // PRINT
+                                                        nullptr,             // NEWLINE
                                                         nullptr,             // RETURN
                                                         nullptr,             // SUPER
                                                         nullptr,             // THIS
@@ -174,10 +175,13 @@ struct Compiler {
                                                         &Compiler::atan,     // ATAN
                                                         &Compiler::ceil,     // CEIL
                                                         &Compiler::floor,    // FLOOR
+                                                        &Compiler::atan2,    // ATAN2
+                                                        &Compiler::min,      // MIN
+                                                        &Compiler::max,      // MAX
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 58> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 62> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -213,6 +217,7 @@ struct Compiler {
                                                        nullptr,           // NIL
                                                        &Compiler::or_,    // OR
                                                        nullptr,           // PRINT
+                                                       nullptr,           // NEWLINE
                                                        nullptr,           // RETURN
                                                        nullptr,           // SUPER
                                                        nullptr,           // THIS
@@ -233,10 +238,13 @@ struct Compiler {
                                                        nullptr,           // ATAN
                                                        nullptr,           // CEIL
                                                        nullptr,           // FLOOR
+                                                       nullptr,           // ATAN2
+                                                       nullptr,           // MIN
+                                                       nullptr,           // MAX
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 58> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 62> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -272,6 +280,7 @@ struct Compiler {
                                         Precedence::NONE,       // NIL
                                         Precedence::OR,         // OR
                                         Precedence::NONE,       // PRINT
+                                        Precedence::NONE,       // NEWLINE  
                                         Precedence::NONE,       // RETURN
                                         Precedence::NONE,       // SUPER
                                         Precedence::NONE,       // THIS
@@ -292,6 +301,9 @@ struct Compiler {
                                         Precedence::NONE,       // ATAN
                                         Precedence::NONE,       // CEIL
                                         Precedence::NONE,       // FLOOR
+                                        Precedence::NONE,       // ATAN2
+                                        Precedence::NONE,       // MIN
+                                        Precedence::NONE,       // MAX                                       
                                         Precedence::NONE,       // ERROR
                                         Precedence::NONE};      // END
   // clang-format on
@@ -541,6 +553,25 @@ struct Compiler {
     parsePrecedence(Precedence::UNARY);
     emitByte(OpCode::ATAN);
   }
+  void binary_consume() {
+    parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'atan'.");
+    expression();
+    parser.consume(TokenType::COMMA, "Expect ',' between arguments to atan.");
+    expression();
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after arguments to atan.");
+  }
+  void atan2(bool tmp_) {
+    binary_consume();
+    emitByte(OpCode::ATAN2);
+  }
+  void min(bool tmp_) {
+    binary_consume();
+    emitByte(OpCode::MIN);
+  }
+  void max(bool tmp_) {
+    binary_consume();
+    emitByte(OpCode::MAX);
+  }
   void ceil(bool tmp_) {
     parsePrecedence(Precedence::UNARY);
     emitByte(OpCode::CEIL);
@@ -667,9 +698,15 @@ struct Compiler {
     }
   }
   void printStatement() {
-    expression();
-    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after value.");
-    emitByte(OpCode::PRINT);
+    parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'print'.");
+    // keep processing expression until no more commas
+    do {
+      expression();
+      emitByte(OpCode::PRINT);
+    } while (match(TokenType::COMMA));
+    emitByte(OpCode::NEWLINE);
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after value.");
+    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
   }
   void expressionStatement() {
     expression();
