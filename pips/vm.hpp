@@ -433,6 +433,7 @@ struct VM {
         break;
       case OpCode::PRINT: {
         printValue(pop());
+        printf(" ");
         break;
       }
       case OpCode::NEWLINE: {
