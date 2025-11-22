@@ -55,6 +55,7 @@ enum class TokenType : unsigned int {
   NIL,
   OR,
   PRINT,
+  NEWLINE,
   RETURN,
   SUPER,
   THIS,
