@@ -10,13 +10,14 @@
 
 // #define DEBUG_TRACE_EXECUTION
 
-#include <cmath>
+
 #include <cstring>
 #include <iostream>
 #include <stdarg.h>
 #include <string>
 #include <unordered_map>
 
+#include "math.hpp"
 #include "types.hpp"
 #include "chunk.hpp"
 #include "compiler.hpp"
@@ -197,7 +198,7 @@ struct VM {
           runtimeError("Operand must be a number");
           return InterpretResult::RUNTIME_ERROR;
         }
-        push(NUMBER_VAL(std::sin(AS_NUMBER(pop()))));
+        push(NUMBER_VAL(pips::sin(AS_NUMBER(pop()))));
         break;
       }
       case OpCode::COS: {
@@ -205,7 +206,7 @@ struct VM {
           runtimeError("Operand must be a number");
           return InterpretResult::RUNTIME_ERROR;
         }
-        push(NUMBER_VAL(std::cos(AS_NUMBER(pop()))));
+        push(NUMBER_VAL(pips::cos(AS_NUMBER(pop()))));
         break;
       }
       case OpCode::TAN: {
@@ -213,7 +214,7 @@ struct VM {
           runtimeError("Operand must be a number");
           return InterpretResult::RUNTIME_ERROR;
         }
-        push(NUMBER_VAL(std::tan(AS_NUMBER(pop()))));
+        push(NUMBER_VAL(pips::tan(AS_NUMBER(pop()))));
         break;
       }
       case OpCode::ABS: {
