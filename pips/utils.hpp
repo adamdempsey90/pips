@@ -40,6 +40,13 @@ inline std::string getKey(const char *chars) {
   std::string key = chars;
   return key;
 }
+
+inline void StringToChar(std::string str, char *buff) {
+  size_t len = std::min(str.length(), static_cast<size_t>(STRING_MAX - 1));
+  std::memcpy(buff, str.c_str(), len);
+  buff[len] = '\0';
+}
+
 } // namespace Utils
 } // namespace pips
 #endif // PIPS_UTILS_HPP_
