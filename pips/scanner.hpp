@@ -38,6 +38,8 @@ enum class TokenType : unsigned int {
   GREATER_EQUAL,
   LESS,
   LESS_EQUAL,
+  QUESTION,
+  COLON,
   // literals:
   IDENTIFIER,
   STRING,
@@ -414,6 +416,10 @@ struct Scanner {
       return Token(TokenType::PLUS, start, current, line);
     case '%':
       return Token(TokenType::MOD, start, current, line);
+    case '?':
+      return Token(TokenType::QUESTION, start, current, line);
+    case ':':
+      return Token(TokenType::COLON, start, current, line);
     case '*':
       return Token(match('*') ? TokenType::STAR_STAR : TokenType::STAR, start, current,
                    line);

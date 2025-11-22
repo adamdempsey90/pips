@@ -26,16 +26,17 @@ namespace pips {
 enum class Precedence : unsigned int {
   NONE = 0,
   ASSIGNMENT = 1,
-  OR = 2,
-  AND = 3,
-  EQUALITY = 4,
-  COMPARISON = 5,
-  TERM = 6,
-  FACTOR = 7,
-  UNARY = 8,
-  POWER = 9,
-  CALL = 10,
-  PRIMARY = 11
+  TERNARY = 2,
+  OR = 3,
+  AND = 4,
+  EQUALITY = 5,
+  COMPARISON = 6,
+  TERM = 7,
+  FACTOR = 8,
+  UNARY = 9,
+  POWER = 10,
+  CALL = 11,
+  PRIMARY = 12
 };
 
 struct Parser {
@@ -113,12 +114,12 @@ struct Compiler {
   int scopeDepth;
 
   // clang-format off
-  std::array<Precedence, 12> prec_array{
-      Precedence::NONE,  Precedence::ASSIGNMENT, Precedence::OR,
-      Precedence::AND,   Precedence::EQUALITY,   Precedence::COMPARISON,
+  std::array<Precedence, 13> prec_array{
+      Precedence::NONE,  Precedence::ASSIGNMENT, Precedence::TERNARY, 
+      Precedence::OR, Precedence::AND,   Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 62> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 64> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -140,6 +141,8 @@ struct Compiler {
                                                         nullptr,          // GREATER_EQUAL
                                                         nullptr,          // LESS
                                                         nullptr,          // LESS_EQUAL
+                                                        nullptr,          // QUESTION
+                                                        nullptr,          // COLON
                                                         &Compiler::variable, // IDENTIFIER
                                                         &Compiler::string,   // STRING
                                                         &Compiler::number,   // NUMBER
@@ -181,7 +184,7 @@ struct Compiler {
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 62> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 64> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -203,6 +206,8 @@ struct Compiler {
                                                        &Compiler::binary, // GREATER_EQUAL
                                                        &Compiler::binary, // LESS
                                                        &Compiler::binary, // LESS_EQUAL
+                                                       &Compiler::ternary,// QUESTION
+                                                       nullptr,           // COLON
                                                        nullptr,           // IDENTIFIER
                                                        nullptr,           // STRING
                                                        nullptr,           // NUMBER
@@ -244,7 +249,7 @@ struct Compiler {
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 62> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 64> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -266,6 +271,8 @@ struct Compiler {
                                         Precedence::COMPARISON, // GREATER_EQUAL
                                         Precedence::COMPARISON, // LESS
                                         Precedence::COMPARISON, // LESS_EQUAL
+                                        Precedence::TERNARY,    // QUESTION
+                                        Precedence::NONE,       // COLON
                                         Precedence::NONE,       // IDENTIFIER
                                         Precedence::NONE,       // STRING
                                         Precedence::NONE,       // NUMBER
@@ -651,6 +658,22 @@ struct Compiler {
     default:
       return;
     }
+  }
+  void ternary(bool tmp_) {
+    int thenJump = emitJump(OpCode::JUMP_IF_FALSE);
+    emitByte(OpCode::POP);
+
+    parsePrecedence(Precedence::TERNARY);
+    
+    int elseJump = emitJump(OpCode::JUMP);
+    patchJump(thenJump);
+    emitByte(OpCode::POP);
+    
+    parser.consume(TokenType::COLON, "Expect ':' after true expression in ternary operator.");
+    
+    parsePrecedence(Precedence::TERNARY);
+    
+    patchJump(elseJump);
   }
   void string(bool tmp_) {
     // The +1 and -2 remove the leading and trailing "
