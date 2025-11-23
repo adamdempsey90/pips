@@ -11,6 +11,7 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> files;
   std::vector<bool> isfile;
   bool verbose = false;
+  bool repl = false;
   int i = 1;
   while (i < argc) {
      if (*argv[i] == '-' && *(argv[i] + 1) != '\0' && *(argv[i] + 2) == '\0') {
@@ -29,6 +30,10 @@ int main(int argc, char *argv[]) {
           }
           case 'v': {
             verbose = true;
+            break;
+          }
+          case 'r': {
+            repl = true;
             break;
           }
           case 'c': {
@@ -62,6 +67,8 @@ int main(int argc, char *argv[]) {
             printf("                          enter the REPL\n");
             printf("  -i  [script]            run script then enter REPL\n");
             printf("  -c  'line1' 'line2' ... run code snippet\n");
+            printf("  -v                      verbose output\n");
+            printf("  -r                      run in REPL mode after executing files\n");
             printf("  -h                      display this help message\n");
             return 0;
           }
@@ -95,6 +102,12 @@ int main(int argc, char *argv[]) {
         if (result == pips::InterpretResult::COMPILE_ERROR) return 65;
         if (result == pips::InterpretResult::RUNTIME_ERROR) return 70;
     }
+  }
+  if (repl) {
+    if (verbose) {
+      printf("Entering REPL mode\n");
+    }
+    vm.repl('\n');
   }
   return 0;
 }
