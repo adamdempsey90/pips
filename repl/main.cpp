@@ -1,4 +1,4 @@
-#include <pips/vm.hpp> 
+#include <pips/vm.hpp>
 
 int main(int argc, char *argv[]) {
   pips::VM vm;
@@ -8,15 +8,15 @@ int main(int argc, char *argv[]) {
     vm.repl('\n');
     return 0;
   }
-  std::string lines;
   std::vector<std::string> files;
+  std::vector<bool> isfile;
   bool verbose = false;
   int i = 1;
   while (i < argc) {
      if (*argv[i] == '-' && *(argv[i] + 1) != '\0' && *(argv[i] + 2) == '\0') {
         char opt = *(argv[i] + 1);
         switch (opt) {
-          case 'i':
+          case 'i': {
             // Run a script
             i++;
             if (i >= argc) {
@@ -24,12 +24,16 @@ int main(int argc, char *argv[]) {
                 return -1;
             }
             files.push_back(argv[i]);
+            isfile.push_back(true);
             break;
-          case 'v':
+          }
+          case 'v': {
             verbose = true;
             break;
-          case 'c':
+          }
+          case 'c': {
               // consume arguments until another -? is hit
+              std::string lines;
               do {
                   i++;
                   if (i >= argc)
@@ -44,32 +48,53 @@ int main(int argc, char *argv[]) {
                   }
                   lines += line + ";\n";
               } while (i < argc);
+              if (lines.empty()) {
+                  printf("Usage: pips -c 'line1' 'line2' ...\n");
+                  return -1;
+              }
+              files.push_back(lines.c_str());
+              isfile.push_back(false);
               break;
-           case 'h':
-              printf("Usage: repl [options] [script]\n");
-              printf("Options:\n");
-              printf("                          enter the REPL\n");
-              printf("  -i  [script]            run script then enter REPL\n");
-              printf("  -c  'line1' 'line2' ... run code snippet\n");
-              printf("  -h                      display this help message\n");
-              return 0;
+          }
+          case 'h': {
+            printf("Usage: repl [options] [script]\n");
+            printf("Options:\n");
+            printf("                          enter the REPL\n");
+            printf("  -i  [script]            run script then enter REPL\n");
+            printf("  -c  'line1' 'line2' ... run code snippet\n");
+            printf("  -h                      display this help message\n");
+            return 0;
+          }
         }
      }
      i++;
   }
-  if (!lines.empty()) {
-      if (verbose) {
-          printf("Input::\n%s\n", lines.c_str());
+
+  if (verbose) {
+    printf("Running:\n");
+    for(size_t idx = 0; idx < files.size(); ++idx) {
+      const auto &file = files[idx];
+      bool fileFlag = isfile[idx];
+      if (fileFlag) {
+          char *source = pips::Utils::readFile(file);
+          printf("\n%s\n", source);
+          std::free(source);
+      } else {
+          printf("\n%s\n", file.c_str());
       }
-      auto result = vm.interpret(lines.c_str());
-      if (result == pips::InterpretResult::COMPILE_ERROR) return 65;
-      if (result == pips::InterpretResult::RUNTIME_ERROR) return 70;
+      printf("################################\n");
+    }
   }
-  for (const auto &file : files) {
-      if (verbose) {
-          printf("Running script: %s\n", file.c_str());
-      }
-      vm.runFile(file);
+  for (size_t idx = 0; idx < files.size(); ++idx) {
+    const auto &file = files[idx];
+    bool fileFlag = isfile[idx];
+    if (fileFlag) {
+        vm.runFile(file);
+    } else {
+        auto result = vm.interpret(file.c_str());
+        if (result == pips::InterpretResult::COMPILE_ERROR) return 65;
+        if (result == pips::InterpretResult::RUNTIME_ERROR) return 70;
+    }
   }
   return 0;
 }
