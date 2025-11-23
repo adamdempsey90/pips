@@ -28,15 +28,16 @@ enum class Precedence : unsigned int {
   ASSIGNMENT = 1,
   TERNARY = 2,
   OR = 3,
-  AND = 4,
-  EQUALITY = 5,
-  COMPARISON = 6,
-  TERM = 7,
-  FACTOR = 8,
-  UNARY = 9,
-  POWER = 10,
-  CALL = 11,
-  PRIMARY = 12
+  XOR = 4,
+  AND = 5,
+  EQUALITY = 6,
+  COMPARISON = 7,
+  TERM = 8,
+  FACTOR = 9,
+  UNARY = 10,
+  POWER = 11,
+  CALL = 12,
+  PRIMARY = 13
 };
 
 struct Parser {
@@ -114,12 +115,13 @@ struct Compiler {
   int scopeDepth;
 
   // clang-format off
-  std::array<Precedence, 13> prec_array{
+  std::array<Precedence, 14> prec_array{
       Precedence::NONE,  Precedence::ASSIGNMENT, Precedence::TERNARY, 
-      Precedence::OR, Precedence::AND,   Precedence::EQUALITY,   Precedence::COMPARISON,
+      Precedence::OR, Precedence::XOR, Precedence::AND,   
+      Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 64> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 70> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -156,7 +158,13 @@ struct Compiler {
                                                         nullptr,             // IF
                                                         &Compiler::literal,  // NIL
                                                         nullptr,             // OR
+                                                        nullptr,             // XOR
+                                                        nullptr,             // BAND
+                                                        nullptr,             // BOR
+                                                        nullptr,             // LSHIFT
+                                                        nullptr,             // RSHIFT
                                                         nullptr,             // PRINT
+                                                        nullptr,             // LIST
                                                         nullptr,             // NEWLINE
                                                         nullptr,             // RETURN
                                                         nullptr,             // SUPER
@@ -184,7 +192,7 @@ struct Compiler {
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 64> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 70> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -221,7 +229,13 @@ struct Compiler {
                                                        nullptr,           // IF
                                                        nullptr,           // NIL
                                                        &Compiler::or_,    // OR
+                                                       &Compiler::binary, // XOR
+                                                       &Compiler::binary, // BOR
+                                                       &Compiler::binary, // BAND
+                                                       &Compiler::binary, // LSHIFT
+                                                       &Compiler::binary, // RSHIFT
                                                        nullptr,           // PRINT
+                                                       nullptr,           // LIST
                                                        nullptr,           // NEWLINE
                                                        nullptr,           // RETURN
                                                        nullptr,           // SUPER
@@ -249,7 +263,7 @@ struct Compiler {
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 64> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 70> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -286,7 +300,13 @@ struct Compiler {
                                         Precedence::NONE,       // IF
                                         Precedence::NONE,       // NIL
                                         Precedence::OR,         // OR
+                                        Precedence::XOR,        // XOR
+                                        Precedence::OR,         // BOR
+                                        Precedence::AND,        // BAND
+                                        Precedence::TERM,       // LSHIFT
+                                        Precedence::TERM,       // RSHIFT
                                         Precedence::NONE,       // PRINT
+                                        Precedence::NONE,       // LIST
                                         Precedence::NONE,       // NEWLINE  
                                         Precedence::NONE,       // RETURN
                                         Precedence::NONE,       // SUPER
@@ -655,6 +675,21 @@ struct Compiler {
     case TokenType::SLASH_SLASH:
       emitByte(OpCode::INTDIVIDE);
       break;
+    case TokenType::XOR:
+      emitByte(OpCode::XOR);
+      break;
+    case TokenType::BOR:
+      emitByte(OpCode::BOR);
+      break;
+    case TokenType::BAND:
+      emitByte(OpCode::BAND);
+      break;
+    case TokenType::LSHIFT:
+      emitByte(OpCode::LSHIFT);
+      break;
+    case TokenType::RSHIFT:
+      emitByte(OpCode::RSHIFT);
+      break;
     default:
       return;
     }
@@ -713,12 +748,18 @@ struct Compiler {
       case TokenType::IF:
       case TokenType::WHILE:
       case TokenType::PRINT:
+      case TokenType::LIST:
       case TokenType::RETURN:
         return;
       default:; // Do nothing
       }
       parser.advance();
     }
+  }
+  void listStatement() {
+    // dump the current list of variables
+    emitByte(OpCode::LIST);
+    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
   }
   void printStatement() {
     parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'print'.");
@@ -868,6 +909,8 @@ struct Compiler {
   void statement() {
     if (match(TokenType::PRINT)) {
       printStatement();
+    } else if (match(TokenType::LIST)) {
+      listStatement();
     } else if (match(TokenType::LEFT_BRACE)) {
       beginScope();
       block();

@@ -22,6 +22,7 @@ namespace pips {
 #define IS_NIL(value) ((value).type == ValueType::NIL)
 #define IS_NUMBER(value) ((value).type == ValueType::NUMBER)
 #define IS_STRING(value) ((value).type == ValueType::STRING)
+#define IS_NUMERIC(value) ((value).type == ValueType::NUMBER || (value).type == ValueType::BOOL)
 
 #define AS_BOOL(value) ((value).as.boolean)
 #define AS_NUMBER(value) ((value).as.number)
@@ -29,7 +30,28 @@ namespace pips {
 
 extern void printObject(Value val);
 
-inline void printValue(Value val) {
+
+inline int64_t AS_INTEGER(const Value &val) {
+  if (IS_BOOL(val)) {
+    return AS_BOOL(val) ? 1 : 0;
+  }
+  return static_cast<int64_t>(AS_NUMBER(val));
+}
+
+inline int64_t IS_INTEGRAL(const Value &val) {
+  if (IS_BOOL(val)) {
+    return true;
+  }
+  if (!IS_NUMBER(val)) {
+    return false;
+  }
+  if (static_cast<Real>(static_cast<int64_t>(AS_NUMBER(val))) == AS_NUMBER(val)) {
+    return true;
+  }
+  return false;
+}
+
+inline void printValue(const Value &val) {
   switch (val.type) {
   case ValueType::BOOL:
     printf(AS_BOOL(val) ? "true" : "false");

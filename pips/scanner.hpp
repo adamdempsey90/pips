@@ -56,7 +56,13 @@ enum class TokenType : unsigned int {
   IF,
   NIL,
   OR,
+  XOR,
+  BOR,
+  BAND,
+  LSHIFT,
+  RSHIFT,
   PRINT,
+  LIST,
   NEWLINE,
   RETURN,
   SUPER,
@@ -273,6 +279,8 @@ struct Scanner {
           else
             return TokenType::IDENTIFIER;
         }
+        case 'i':
+          return checkKeyword(2, 2, "st", TokenType::LIST);
         }
       }
       break;
@@ -341,6 +349,8 @@ struct Scanner {
 #endif
     case 'w':
       return checkKeyword(1, 4, "hile", TokenType::WHILE);
+    case 'x':
+      return checkKeyword(1, 2, "or", TokenType::XOR);
       // default: return TokenType::STRING;
     }
     return TokenType::IDENTIFIER;
@@ -420,6 +430,12 @@ struct Scanner {
       return Token(TokenType::QUESTION, start, current, line);
     case ':':
       return Token(TokenType::COLON, start, current, line);
+    case '^':
+      return Token(TokenType::XOR, start, current, line);
+    case '|':
+      return Token(TokenType::BOR, start, current, line);
+    case '&':
+      return Token(TokenType::BAND, start, current, line);
     case '*':
       return Token(match('*') ? TokenType::STAR_STAR : TokenType::STAR, start, current,
                    line);
@@ -433,11 +449,21 @@ struct Scanner {
       return Token(match('=') ? TokenType::EQUAL_EQUAL : TokenType::EQUAL, start, current,
                    line);
     case '<':
-      return Token(match('=') ? TokenType::LESS_EQUAL : TokenType::LESS, start, current,
-                   line);
+      if (match('=')) {
+        return Token(TokenType::LESS_EQUAL, start, current, line);
+      } else if (match('<')) {
+        return Token(TokenType::LSHIFT, start, current, line);
+      } else {
+        return Token(TokenType::LESS, start, current, line);
+      }
     case '>':
-      return Token(match('=') ? TokenType::GREATER_EQUAL : TokenType::GREATER, start,
-                   current, line);
+      if (match('=')) {
+        return Token(TokenType::GREATER_EQUAL, start, current, line);
+      } else if (match('>')) {
+        return Token(TokenType::RSHIFT, start, current, line);
+      } else {
+        return Token(TokenType::GREATER, start, current, line);
+      }
     case '"':
       return string();
     }

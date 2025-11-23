@@ -25,6 +25,11 @@ enum OpCode {
   DIVIDE,
   INTDIVIDE,
   NOT,
+  XOR,
+  BOR,
+  BAND,
+  LSHIFT,
+  RSHIFT,
   EQUAL,
   GREATER,
   LESS,
@@ -48,6 +53,7 @@ enum OpCode {
   MIN,
   MAX,
   PRINT,
+  LIST,
   NEWLINE,
   POP,
   DEFINE_GLOBAL,
@@ -150,6 +156,12 @@ struct Chunk {
       return Instruction<OpCode::FALSE>("OP_FALSE", i);
     case OpCode::NOT:
       return Instruction<OpCode::NOT>("OP_NOT", i);
+    case OpCode::XOR:
+      return Instruction<OpCode::XOR>("OP_XOR", i);
+    case OpCode::LSHIFT:
+      return Instruction<OpCode::LSHIFT>("OP_LSHIFT", i);
+    case OpCode::RSHIFT:
+      return Instruction<OpCode::RSHIFT>("OP_RSHIFT", i);
     case OpCode::EQUAL:
       return Instruction<OpCode::EQUAL>("OP_EQUAL", i);
     case OpCode::GREATER:
@@ -195,7 +207,9 @@ struct Chunk {
     case OpCode::FLOOR:
       return Instruction<OpCode::FLOOR>("OP_FLOOR", i);
     case OpCode::PRINT:
-      return Instruction<OpCode::RETURN>("OP_PRINT", i);
+      return Instruction<OpCode::PRINT>("OP_PRINT", i);
+    case OpCode::LIST:
+      return Instruction<OpCode::LIST>("OP_LIST", i);
     case OpCode::NEWLINE:
       return Instruction<OpCode::RETURN>("OP_NEWLINE", i);
     case OpCode::POP:

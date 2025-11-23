@@ -84,6 +84,23 @@ enum class InterpretResult { OK, COMPILE_ERROR, RUNTIME_ERROR };
     push(valueType(func(a, b)));                                                     \
   } while (false)
 
+#define BITWISE_OP(op)                                                                   \
+  do {                                                                                   \
+    if (!IS_INTEGRAL(peek(0)) || !IS_INTEGRAL(peek(1))) {                                \
+      runtimeError("Operands must be convertable to integers.");                         \
+      return InterpretResult::RUNTIME_ERROR;                                             \
+    }                                                                                   \
+    if (IS_BOOL(peek(0)) && IS_BOOL(peek(1))) {                                         \
+      bool b = AS_BOOL(pop());                                                        \
+      bool a = AS_BOOL(pop());                                                         \
+      push(BOOL_VAL(a op b));                                                          \
+    } else {                                                                            \
+      int64_t b = AS_INTEGER(pop());                                                     \
+      int64_t a = AS_INTEGER(pop());                                                     \
+      push(NUMBER_VAL(a op b));                                                         \
+    }                                                                                   \
+  } while (false)
+
 struct VM {
   Chunk *chunk;
   uint8_t *ip;
@@ -346,6 +363,26 @@ struct VM {
         STD_BINARY_OP(std::pow, NUMBER_VAL);
         break;
       }
+      case OpCode::XOR: {
+        BITWISE_OP(^);
+        break;
+      }
+      case OpCode::BOR: {
+        BITWISE_OP(|);
+        break;
+      }
+      case OpCode::BAND: {
+        BITWISE_OP(&);
+        break;
+      }
+      case OpCode::LSHIFT: {
+        BITWISE_OP(<<);
+        break;
+      }
+      case OpCode::RSHIFT: {
+        BITWISE_OP(>>);
+        break;
+      }
       case OpCode::NOT: {
         push(BOOL_VAL(isFalsey(pop())));
         break;
@@ -434,6 +471,25 @@ struct VM {
       case OpCode::PRINT: {
         printValue(pop());
         printf(" ");
+        break;
+      }
+      case OpCode::LIST: {
+        for(const auto &v: locals) {
+          printf("%s = ", v.first.c_str());
+          printValue(v.second);
+          printf("\n");
+        }
+        for(const auto &v : globals) {
+          printf("%s = ", v.first.c_str());
+          printValue(v.second);
+          printf("\n");
+        }
+        // print stack values
+        for(Value *slot = stack; slot < stackTop; slot++) {
+          printf("stack[%ld] = ", slot - stack);
+          printValue(*slot);
+          printf("\n");
+        }
         break;
       }
       case OpCode::NEWLINE: {
@@ -539,62 +595,12 @@ struct VM {
     }
   }
   void runFile(std::string path) {
-    // Compiler compiler(this);
-
-    // std::FILE* file = std::fopen(path.c_str(), "r");
-    // if (file == nullptr) {
-    //   std::fprintf(stderr, "Could not open file \"%s\".\n", path.c_str());
-    //   exit(74);
-    // }
-    // char line[256];
-    // while (std::fgets(line, sizeof(line), file) != nullptr) {
-    //   interpret(line);
-    // }
-    // std::fclose(file);
     char *source = Utils::readFile(path);
-    printf("Input::\n%s\n", source);
     auto result = interpret(source);
     std::free(source);
     if (result == InterpretResult::COMPILE_ERROR) exit(65);
     if (result == InterpretResult::RUNTIME_ERROR) exit(70);
   }
 };
-
-// inline Obj *allocateObject(VM *vm, size_t size, ObjType type) {
-//   Obj *object = (Obj *)reallocate(nullptr, 0, size);
-//   object->type = type;
-//   vm->addAllocate(object);
-//   return object;
-// }
-
-// inline ObjString *allocateString(VM *vm, char *chars, int length) {
-//   ObjString *string = ALLOCATE_OBJ(vm, ObjString, ObjType::STRING);
-//   string->length = length;
-//   string->chars = chars;
-
-//   vm->strings[Utils::getKey(string->chars)] = string;
-//   return string;
-// }
-
-// inline ObjString *copyString(VM *vm, const char *chars, int length) {
-//   auto found = vm->strings.find(Utils::getKey(chars));
-//   if (found != vm->strings.end()) {
-//     // exists
-//     return found->second;
-//   }
-//   char *heapChars = ALLOCATE(char, length + 1);
-//   std::memcpy(heapChars, chars, length);
-//   heapChars[length] = '\0';
-//   return allocateString(vm, heapChars, length);
-// }
-
-// ObjString *takeString(VM *vm, char *chars, int length) {
-//   auto found = vm->strings.find(Utils::getKey(chars));
-//   if (found != vm->strings.end()) {
-//     FREE_ARRAY(char, chars, length + 1);
-//     return found->second;
-//   }
-//   return allocateString(vm, chars, length);
-// }
 } // namespace pips
 #endif // PIPS_VM_HPP_
