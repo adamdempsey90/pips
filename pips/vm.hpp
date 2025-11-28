@@ -166,7 +166,7 @@ struct VM {
     return *stackTop;
   }
   Value peek(int dist) { return stackTop[-1 - dist]; }
-  bool isFalsey(Value val) { return IS_NIL(val) || (IS_BOOL(val) && !AS_BOOL(val)); }
+  bool isFalsey(Value val) { return IS_NIL(val) || (IS_BOOL(val) && !AS_BOOL(val)) || (IS_INTEGRAL(val) && AS_INTEGER(val) == 0); }
   void concatenate() {
     std::string a_str = (pop()).as.str;
     std::string b_str = (pop()).as.str;
@@ -373,6 +373,18 @@ struct VM {
       }
       case OpCode::BAND: {
         BITWISE_OP(&);
+        break;
+      }
+      case OpCode::BNOT: {
+        if (!IS_INTEGRAL(peek(0))) {
+          runtimeError("Operand must be an integer or boolean");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (IS_BOOL(peek(0))) {
+          push(BOOL_VAL(!AS_BOOL(pop())));
+        } else {
+          push(NUMBER_VAL(~AS_INTEGER(pop())));
+        }
         break;
       }
       case OpCode::LSHIFT: {
