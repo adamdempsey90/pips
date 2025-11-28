@@ -28,6 +28,7 @@ enum OpCode {
   XOR,
   BOR,
   BAND,
+  BNOT,
   LSHIFT,
   RSHIFT,
   EQUAL,

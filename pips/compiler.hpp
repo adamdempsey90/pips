@@ -121,7 +121,7 @@ struct Compiler {
       Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 70> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 71> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -159,8 +159,9 @@ struct Compiler {
                                                         &Compiler::literal,  // NIL
                                                         nullptr,             // OR
                                                         nullptr,             // XOR
-                                                        nullptr,             // BAND
                                                         nullptr,             // BOR
+                                                        nullptr,             // BAND
+                                                        &Compiler::unary,    // BNOT
                                                         nullptr,             // LSHIFT
                                                         nullptr,             // RSHIFT
                                                         nullptr,             // PRINT
@@ -192,7 +193,7 @@ struct Compiler {
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 70> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 71> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -232,6 +233,7 @@ struct Compiler {
                                                        &Compiler::binary, // XOR
                                                        &Compiler::binary, // BOR
                                                        &Compiler::binary, // BAND
+                                                       nullptr,           // BNOT
                                                        &Compiler::binary, // LSHIFT
                                                        &Compiler::binary, // RSHIFT
                                                        nullptr,           // PRINT
@@ -263,7 +265,7 @@ struct Compiler {
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 70> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 71> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -303,6 +305,7 @@ struct Compiler {
                                         Precedence::XOR,        // XOR
                                         Precedence::OR,         // BOR
                                         Precedence::AND,        // BAND
+                                        Precedence::NONE,       // BNOT
                                         Precedence::TERM,       // LSHIFT
                                         Precedence::TERM,       // RSHIFT
                                         Precedence::NONE,       // PRINT
@@ -620,6 +623,9 @@ struct Compiler {
       break;
     case TokenType::PLUS:
       emitByte(OpCode::UPLUS);
+      break;
+    case TokenType::BNOT:
+      emitByte(OpCode::BNOT);
       break;
     case TokenType::BANG:
       emitByte(OpCode::NOT);

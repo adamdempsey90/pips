@@ -59,6 +59,7 @@ enum class TokenType : unsigned int {
   XOR,
   BOR,
   BAND,
+  BNOT,
   LSHIFT,
   RSHIFT,
   PRINT,
@@ -296,8 +297,17 @@ struct Scanner {
       }
       break;
     }
-    case 'n':
-      return checkKeyword(1, 2, "il", TokenType::NIL);
+    case 'n': {
+      if (current - start > 1) {
+        switch (start[1]) {
+        case 'i':
+          return checkKeyword(2, 1, "l", TokenType::NIL);
+        case 'o':
+          return checkKeyword(2, 1, "t", TokenType::BANG);
+        }
+      }
+      break;
+    }
     case 'o':
       return checkKeyword(1, 1, "r", TokenType::OR);
     case 'p': {
@@ -432,6 +442,8 @@ struct Scanner {
       return Token(TokenType::COLON, start, current, line);
     case '^':
       return Token(TokenType::XOR, start, current, line);
+    case '~':
+      return Token(TokenType::BNOT, start, current, line);
     case '|':
       return Token(TokenType::BOR, start, current, line);
     case '&':
