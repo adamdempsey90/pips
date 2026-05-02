@@ -263,7 +263,8 @@ struct VM {
           runtimeError("Operand must be a number");
           return InterpretResult::RUNTIME_ERROR;
         }
-        push(NUMBER_VAL((AS_NUMBER(pop()) < 0.0 ? -1.0L : 1.0L)));
+        auto value = AS_NUMBER(pop());
+        push(NUMBER_VAL((value < 0.0 ? -1.0L : (value > 0.0 ? 1.0L : 0.0L))));
         break;
       }
       case OpCode::SQRT: {
