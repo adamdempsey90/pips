@@ -1,0 +1,21 @@
+name: GCC Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CC: gcc
+      CXX: g++
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B ci-build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build ci-build --parallel

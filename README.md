@@ -1,4 +1,7 @@
 # pips
+[![GCC Build](https://github.com/adamdempsey90/pips/actions/workflows/gcc-build.yml/badge.svg)](https://github.com/adamdempsey90/pips/actions/workflows/gcc-build.yml)
+[![Clang Build](https://github.com/adamdempsey90/pips/actions/workflows/clang-build.yml/badge.svg)](https://github.com/adamdempsey90/pips/actions/workflows/clang-build.yml)
+
 Header-only compiler for a simple programming language. 
 
 Much of this code is based on the clox language from the book
