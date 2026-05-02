@@ -31,21 +31,21 @@ namespace pips {
 extern void printObject(Value val);
 
 
-inline int64_t AS_INTEGER(const Value &val) {
+inline std::int64_t AS_INTEGER(const Value &val) {
   if (IS_BOOL(val)) {
     return AS_BOOL(val) ? 1 : 0;
   }
-  return static_cast<int64_t>(AS_NUMBER(val));
+  return static_cast<std::int64_t>(AS_NUMBER(val));
 }
 
-inline int64_t IS_INTEGRAL(const Value &val) {
+inline std::int64_t IS_INTEGRAL(const Value &val) {
   if (IS_BOOL(val)) {
     return true;
   }
   if (!IS_NUMBER(val)) {
     return false;
   }
-  if (static_cast<Real>(static_cast<int64_t>(AS_NUMBER(val))) == AS_NUMBER(val)) {
+  if (static_cast<Real>(static_cast<std::int64_t>(AS_NUMBER(val))) == AS_NUMBER(val)) {
     return true;
   }
   return false;

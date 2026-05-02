@@ -1,6 +1,8 @@
 #ifndef PIPS_TYPES_HPP_
 #define PIPS_TYPES_HPP_
 
+#include <cstdint>
+
 namespace pips {
 
 #ifndef STRING_MAX
@@ -12,7 +14,6 @@ namespace pips {
 #endif
 
 using Real = long double;
-
 } // namespace pips
 
 #endif // PIPS_TYPES_HPP_

@@ -357,18 +357,18 @@ struct Compiler {
   void set_current(Compiler *curr) { current = curr; }
   Chunk *currentChunk() { return compilingChunk; }
 
-  void emitByte(uint8_t byte) { currentChunk()->write(byte, parser.previous.line); }
-  void emitBytes(uint8_t byte1, uint8_t byte2) {
+  void emitByte(std::uint8_t byte) { currentChunk()->write(byte, parser.previous.line); }
+  void emitBytes(std::uint8_t byte1, std::uint8_t byte2) {
     emitByte(byte1);
     emitByte(byte2);
   }
-  uint8_t makeConstant(Value val) {
+  std::uint8_t makeConstant(Value val) {
     auto constant = currentChunk()->addConstant(val);
-    if (constant > Utils::Big<uint8_t>()) {
+    if (constant > Utils::Big<std::uint8_t>()) {
       parser.error("Too many constants in one chunk.");
       return 0;
     }
-    return static_cast<uint8_t>(constant);
+    return static_cast<std::uint8_t>(constant);
   }
   void emitReturn() { emitByte(OpCode::RETURN); }
   void emitConstant(Value val) { emitBytes(OpCode::CONSTANT, makeConstant(val)); }
@@ -438,7 +438,7 @@ struct Compiler {
     //   return statement();
     //}
     declareVariable();
-    uint8_t global = (current->scopeDepth > 0) ? 0 : identifierConstant(&parser.previous);
+    std::uint8_t global = (current->scopeDepth > 0) ? 0 : identifierConstant(&parser.previous);
     if (match(TokenType::EQUAL)) {
       expression();
     } else {
@@ -460,13 +460,13 @@ struct Compiler {
     defineVariable(global);
   }
 
-  uint8_t identifierConstant(Token *name) {
+  std::uint8_t identifierConstant(Token *name) {
     Value val;
     val.type = ValueType::STRING;
     name->copy(val.as.str);
     return makeConstant(val);
   }
-  uint8_t parseVariable(const char *msg) {
+  std::uint8_t parseVariable(const char *msg) {
     parser.consume(TokenType::IDENTIFIER, msg);
     declareVariable();
     if (current->scopeDepth > 0) return 0;
@@ -475,7 +475,7 @@ struct Compiler {
   void markInitialized() {
     current->locals[current->localCount - 1].depth = current->scopeDepth;
   }
-  void defineVariable(uint8_t global) {
+  void defineVariable(std::uint8_t global) {
     if (current->scopeDepth > 0) {
       markInitialized();
       return;
@@ -495,7 +495,7 @@ struct Compiler {
     return -1;
   }
   void namedVariable(Token name, bool canAssign) {
-    uint8_t getOp, setOp;
+    std::uint8_t getOp, setOp;
     int arg = resolveLocal(current, &name);
     if (arg != -1) {
       getOp = OpCode::GET_LOCAL;
@@ -507,9 +507,9 @@ struct Compiler {
     }
     if (canAssign && match(TokenType::EQUAL)) {
       expression();
-      emitBytes(setOp, (uint8_t)arg);
+      emitBytes(setOp, (std::uint8_t)arg);
     } else {
-      emitBytes(getOp, (uint8_t)arg);
+      emitBytes(getOp, (std::uint8_t)arg);
     }
   }
   void and_(bool tmp_) {
@@ -785,7 +785,7 @@ struct Compiler {
     }
     emitByte(OpCode::POP);
   }
-  int emitJump(uint8_t instruction) {
+  int emitJump(std::uint8_t instruction) {
     emitByte(instruction);
     emitByte(0xff);
     emitByte(0xff);

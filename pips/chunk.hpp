@@ -79,7 +79,7 @@ inline constexpr bool is_ByteOp() {
 }
 
 struct Chunk {
-  std::vector<uint8_t> code;
+  std::vector<std::uint8_t> code;
   std::vector<Value> constants;
   std::vector<int> lines;
 
@@ -91,7 +91,7 @@ struct Chunk {
 
   ~Chunk() = default;
 
-  void write(const uint8_t byte, const int line) {
+  void write(const std::uint8_t byte, const int line) {
     code.push_back(byte);
     lines.push_back(line);
   }
@@ -107,7 +107,7 @@ struct Chunk {
       printf("%s\n", name.c_str());
       return i + 1;
     } else if constexpr (is_ByteOp<OP>()) {
-      uint8_t slot = code[i + 1];
+      std::uint8_t slot = code[i + 1];
       printf("%-16s %4d\n", name, slot);
       return i + 2;
     } else {
@@ -120,7 +120,7 @@ struct Chunk {
     return i + 1;
   }
   int jumpInstruction(const char *name, int sign, int offset) {
-    uint16_t jump = static_cast<uint16_t>(code[offset + 1] << 8);
+    std::uint16_t jump = static_cast<std::uint16_t>(code[offset + 1] << 8);
     jump |= code[offset + 2];
     printf("%-16s %4d -> %d\n", name, offset, offset + 3 + sign * jump);
     return offset + 3;
