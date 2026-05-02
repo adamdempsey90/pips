@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure
-        run: cmake -S . -B ci-build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build/ci-build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build ci-build --parallel
+        run: cmake --build build/ci-build --parallel
