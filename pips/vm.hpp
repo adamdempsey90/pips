@@ -95,15 +95,15 @@ enum class InterpretResult { OK, COMPILE_ERROR, RUNTIME_ERROR };
       bool a = AS_BOOL(pop());                                                         \
       push(BOOL_VAL(a op b));                                                          \
     } else {                                                                            \
-      int64_t b = AS_INTEGER(pop());                                                     \
-      int64_t a = AS_INTEGER(pop());                                                     \
+      std::int64_t b = AS_INTEGER(pop());                                                     \
+      std::int64_t a = AS_INTEGER(pop());                                                     \
       push(NUMBER_VAL(a op b));                                                         \
     }                                                                                   \
   } while (false)
 
 struct VM {
   Chunk *chunk;
-  uint8_t *ip;
+  std::uint8_t *ip;
   Value stack[STACK_MAX];
   Value *stackTop;
 
@@ -184,7 +184,7 @@ struct VM {
       printf("\n");
       chunk->disassembleInstruction(static_cast<int>(ip - chunk->code.data()));
 #endif
-      uint8_t instruction;
+      std::uint8_t instruction;
       switch (instruction = (*ip++)) {
       case OpCode::NEGATE: {
         if (!IS_NUMBER(peek(0))) {
@@ -442,12 +442,12 @@ struct VM {
         break;
       }
       case OpCode::GET_LOCAL: {
-        uint8_t slot = *ip++;
+        std::uint8_t slot = *ip++;
         push(stack[slot]);
         break;
       }
       case OpCode::SET_LOCAL: {
-        uint8_t slot = *ip++;
+        std::uint8_t slot = *ip++;
         stack[slot] = peek(0);
         break;
       }
@@ -509,17 +509,17 @@ struct VM {
         break;
       }
       case OpCode::JUMP_IF_FALSE: {
-        uint16_t offset = (ip += 2, static_cast<uint16_t>((ip[-2] << 8) | ip[-1]));
+        std::uint16_t offset = (ip += 2, static_cast<std::uint16_t>((ip[-2] << 8) | ip[-1]));
         if (isFalsey(peek(0))) ip += offset;
         break;
       }
       case OpCode::JUMP: {
-        uint16_t offset = (ip += 2, static_cast<uint16_t>((ip[-2] << 8) | ip[-1]));
+        std::uint16_t offset = (ip += 2, static_cast<std::uint16_t>((ip[-2] << 8) | ip[-1]));
         ip += offset;
         break;
       }
       case OpCode::LOOP: {
-        uint16_t offset = (ip += 2, static_cast<uint16_t>((ip[-2] << 8) | ip[-1]));
+        std::uint16_t offset = (ip += 2, static_cast<std::uint16_t>((ip[-2] << 8) | ip[-1]));
         ip -= offset;
         break;
       }
