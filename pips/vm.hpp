@@ -16,8 +16,10 @@
 #include <stdarg.h>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "math.hpp"
+#include "readline.hpp"
 #include "types.hpp"
 #include "chunk.hpp"
 #include "compiler.hpp"
@@ -597,21 +599,21 @@ struct VM {
     return run(locals);
   }
   void repl(char end_line = ';') {
-    // Compiler compiler(this);
     std::string source;
     bool block = false;
+    std::vector<std::string> history;
     for (;;) {
-      char line[1024] = {};
-      if (not block) {
-        printf(">>> ");
-      } else {
-        printf("... ");
+      const char *prompt = block ? "... " : ">>> ";
+      std::string this_line;
+      auto result = pips_readline(prompt, history);
+      if (!result) { printf("\n"); break; }
+      this_line = *result;
+      {
+        std::string trimmed = this_line;
+        if (!trimmed.empty() && trimmed.back() == '\n') trimmed.pop_back();
+        if (!trimmed.empty() && (history.empty() || history.back() != trimmed))
+          history.push_back(trimmed);
       }
-      if (!std::fgets(line, sizeof(line), stdin)) {
-        printf("\n");
-        break;
-      }
-      std::string this_line = line;
       source += this_line;
 
       if (this_line == "\n") {
