@@ -121,7 +121,7 @@ struct Compiler {
       Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 71> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 74> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -166,6 +166,9 @@ struct Compiler {
                                                         nullptr,             // RSHIFT
                                                         nullptr,             // PRINT
                                                         nullptr,             // LIST
+                                                        nullptr,             // GLOBALS
+                                                        nullptr,             // LOCALS
+                                                        nullptr,             // STACK
                                                         nullptr,             // NEWLINE
                                                         nullptr,             // RETURN
                                                         nullptr,             // SUPER
@@ -193,7 +196,7 @@ struct Compiler {
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 71> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 74> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -238,6 +241,9 @@ struct Compiler {
                                                        &Compiler::binary, // RSHIFT
                                                        nullptr,           // PRINT
                                                        nullptr,           // LIST
+                                                       nullptr,           // GLOBALS
+                                                       nullptr,           // LOCALS
+                                                       nullptr,           // STACK
                                                        nullptr,           // NEWLINE
                                                        nullptr,           // RETURN
                                                        nullptr,           // SUPER
@@ -265,7 +271,7 @@ struct Compiler {
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 71> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 74> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -310,6 +316,9 @@ struct Compiler {
                                         Precedence::TERM,       // RSHIFT
                                         Precedence::NONE,       // PRINT
                                         Precedence::NONE,       // LIST
+                                        Precedence::NONE,       // GLOBALS
+                                        Precedence::NONE,       // LOCALS
+                                        Precedence::NONE,       // STACK
                                         Precedence::NONE,       // NEWLINE  
                                         Precedence::NONE,       // RETURN
                                         Precedence::NONE,       // SUPER
@@ -755,6 +764,9 @@ struct Compiler {
       case TokenType::WHILE:
       case TokenType::PRINT:
       case TokenType::LIST:
+      case TokenType::GLOBALS:
+      case TokenType::LOCALS:
+      case TokenType::STACK:
       case TokenType::RETURN:
         return;
       default:; // Do nothing
@@ -765,6 +777,18 @@ struct Compiler {
   void listStatement() {
     // dump the current list of variables
     emitByte(OpCode::LIST);
+    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
+  }
+  void globalsStatement() {
+    emitByte(OpCode::LIST_GLOBALS);
+    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
+  }
+  void localsStatement() {
+    emitByte(OpCode::LIST_LOCALS);
+    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
+  }
+  void stackStatement() {
+    emitByte(OpCode::LIST_STACK);
     if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
   }
   void printStatement() {
@@ -917,6 +941,12 @@ struct Compiler {
       printStatement();
     } else if (match(TokenType::LIST)) {
       listStatement();
+    } else if (match(TokenType::GLOBALS)) {
+      globalsStatement();
+    } else if (match(TokenType::LOCALS)) {
+      localsStatement();
+    } else if (match(TokenType::STACK)) {
+      stackStatement();
     } else if (match(TokenType::LEFT_BRACE)) {
       beginScope();
       block();

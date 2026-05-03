@@ -487,19 +487,49 @@ struct VM {
         break;
       }
       case OpCode::LIST: {
+        printf("Locals:\n");
         for(const auto &v: locals) {
-          printf("%s = ", v.first.c_str());
+          printf("  %s = ", v.first.c_str());
           printValue(v.second);
           printf("\n");
         }
+        printf("Globals:\n");
         for(const auto &v : globals) {
-          printf("%s = ", v.first.c_str());
+          printf("  %s = ", v.first.c_str());
           printValue(v.second);
           printf("\n");
         }
         // print stack values
+        printf("Stack (size %ld):\n", stackTop - stack);
         for(Value *slot = stack; slot < stackTop; slot++) {
-          printf("stack[%ld] = ", slot - stack);
+          printf("  stack[%ld] = ", slot - stack);
+          printValue(*slot);
+          printf("\n");
+        }
+        break;
+      }
+      case OpCode::LIST_GLOBALS: {
+        printf("Globals:\n");
+        for(const auto &v : globals) {
+          printf("  %s = ", v.first.c_str());
+          printValue(v.second);
+          printf("\n");
+        }
+        break;
+      }
+      case OpCode::LIST_LOCALS: {
+        printf("Locals:\n");
+        for(const auto &v: locals) {
+          printf("  %s = ", v.first.c_str());
+          printValue(v.second);
+          printf("\n");
+        }
+        break;
+      }
+      case OpCode::LIST_STACK: {
+        printf("Stack (size %ld):\n", stackTop - stack);
+        for(Value *slot = stack; slot < stackTop; slot++) {
+          printf("  stack[%ld] = ", slot - stack);
           printValue(*slot);
           printf("\n");
         }

@@ -55,6 +55,9 @@ enum OpCode {
   MAX,
   PRINT,
   LIST,
+  LIST_GLOBALS,
+  LIST_LOCALS,
+  LIST_STACK,
   NEWLINE,
   POP,
   DEFINE_GLOBAL,
@@ -211,6 +214,12 @@ struct Chunk {
       return Instruction<OpCode::PRINT>("OP_PRINT", i);
     case OpCode::LIST:
       return Instruction<OpCode::LIST>("OP_LIST", i);
+    case OpCode::LIST_GLOBALS:
+      return Instruction<OpCode::LIST_GLOBALS>("OP_LIST_GLOBALS", i);
+    case OpCode::LIST_LOCALS:
+      return Instruction<OpCode::LIST_LOCALS>("OP_LIST_LOCALS", i);
+    case OpCode::LIST_STACK:
+      return Instruction<OpCode::LIST_STACK>("OP_LIST_STACK", i);
     case OpCode::NEWLINE:
       return Instruction<OpCode::RETURN>("OP_NEWLINE", i);
     case OpCode::POP:

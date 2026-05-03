@@ -64,6 +64,9 @@ enum class TokenType : unsigned int {
   RSHIFT,
   PRINT,
   LIST,
+  GLOBALS,
+  LOCALS,
+  STACK,
   NEWLINE,
   RETURN,
   SUPER,
@@ -280,8 +283,6 @@ struct Scanner {
           else
             return TokenType::IDENTIFIER;
         }
-        case 'i':
-          return checkKeyword(2, 2, "st", TokenType::LIST);
         }
       }
       break;
@@ -308,6 +309,22 @@ struct Scanner {
       }
       break;
     }
+    case '_':
+      if (current - start > 2 && start[1] == '_') {
+        switch (start[2]) {
+        case 'l':
+          if (current - start > 3) {
+            switch (start[3]) {
+            case 'i': return checkKeyword(4, 4, "st__", TokenType::LIST);
+            case 'o': return checkKeyword(4, 6, "cals__", TokenType::LOCALS);
+            }
+          }
+          break;
+        case 'g': return checkKeyword(3, 8, "lobals__", TokenType::GLOBALS);
+        case 's': return checkKeyword(3, 6, "tack__", TokenType::STACK);
+        }
+      }
+      break;
     case 'o':
       return checkKeyword(1, 1, "r", TokenType::OR);
     case 'p': {
