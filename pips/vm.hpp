@@ -159,9 +159,14 @@ struct VM {
     stackTop = stack;
   }
 
-  void push(Value val) {
+  bool push(Value val) {
+    if (stackTop >= stack + STACK_MAX) {
+      runtimeError("PIPS Stack overflow.");
+      return false;
+    }
     *stackTop = val;
     stackTop++;
+    return true;
   }
   Value pop() {
     stackTop--;
@@ -441,12 +446,12 @@ struct VM {
             return InterpretResult::RUNTIME_ERROR;
           }
         }
-        push(found->second);
+        if (!push(found->second)) return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::GET_LOCAL: {
         std::uint8_t slot = *ip++;
-        push(stack[slot]);
+        if (!push(stack[slot])) return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::SET_LOCAL: {
@@ -456,19 +461,19 @@ struct VM {
       }
       case OpCode::CONSTANT: {
         Value constant = chunk->constants[(*ip++)];
-        push(constant);
+        if (!push(constant)) return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::NIL: {
-        push(NIL_VAL);
+        if (!push(NIL_VAL)) return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::TRUE: {
-        push(BOOL_VAL(true));
+        if (!push(BOOL_VAL(true))) return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::FALSE: {
-        push(BOOL_VAL(false));
+        if (!push(BOOL_VAL(false))) return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::EQUAL: {
