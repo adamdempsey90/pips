@@ -339,7 +339,12 @@ struct VM {
           runtimeError("Operand must be a string");
           return InterpretResult::RUNTIME_ERROR;
         }
-        std::string evar = std::getenv(AS_STRING(pop()));
+        const char *evar_ = std::getenv(AS_STRING(pop()));
+        if (evar_ == nullptr) {
+          runtimeError("Environment variable not defined");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        std::string evar = evar_;
         Real num_var = Utils::Big<Real>();
         if (Utils::ConvertToNumber(evar, num_var)) {
             push(NUMBER_VAL(num_var));
