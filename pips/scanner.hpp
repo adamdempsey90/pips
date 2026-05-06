@@ -90,6 +90,7 @@ enum class TokenType : unsigned int {
   ATAN,
   CEIL,
   FLOOR,
+  ENV,
   // LOG2, sinh, cosh, tanh, erf, tgamma, round,
 
   // special binary functions
@@ -249,6 +250,8 @@ struct Scanner {
         switch (start[1]) {
         case 'l':
           return checkKeyword(2, 2, "se", TokenType::ELSE);
+        case 'n':
+          return checkKeyword(2, 1, "v", TokenType::ENV);
         case 'x':
           return checkKeyword(2, 1, "p", TokenType::EXP);
         }

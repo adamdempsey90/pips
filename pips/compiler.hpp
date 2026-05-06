@@ -121,7 +121,7 @@ struct Compiler {
       Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 74> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 75> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -190,13 +190,14 @@ struct Compiler {
                                                         &Compiler::atan,     // ATAN
                                                         &Compiler::ceil,     // CEIL
                                                         &Compiler::floor,    // FLOOR
+                                                        &Compiler::env,      // ENV
                                                         &Compiler::atan2,    // ATAN2
                                                         &Compiler::min,      // MIN
                                                         &Compiler::max,      // MAX
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 74> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 75> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -265,13 +266,14 @@ struct Compiler {
                                                        nullptr,           // ATAN
                                                        nullptr,           // CEIL
                                                        nullptr,           // FLOOR
+                                                       nullptr,           // ENV
                                                        nullptr,           // ATAN2
                                                        nullptr,           // MIN
                                                        nullptr,           // MAX
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 74> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 75> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -340,6 +342,7 @@ struct Compiler {
                                         Precedence::NONE,       // ATAN
                                         Precedence::NONE,       // CEIL
                                         Precedence::NONE,       // FLOOR
+                                        Precedence::NONE,       // ENV
                                         Precedence::NONE,       // ATAN2
                                         Precedence::NONE,       // MIN
                                         Precedence::NONE,       // MAX                                       
@@ -618,6 +621,10 @@ struct Compiler {
   void floor(bool tmp_) {
     parsePrecedence(Precedence::UNARY);
     emitByte(OpCode::FLOOR);
+  }
+  void env(bool tmp_) {
+    parsePrecedence(Precedence::UNARY);
+    emitByte(OpCode::ENV);
   }
   void grouping(bool tmp_) {
     expression();

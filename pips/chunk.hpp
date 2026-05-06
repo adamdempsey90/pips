@@ -50,6 +50,7 @@ enum OpCode {
   ATAN,
   CEIL,
   FLOOR,
+  ENV,
   ATAN2,
   MIN,
   MAX,
@@ -210,6 +211,8 @@ struct Chunk {
       return Instruction<OpCode::CEIL>("OP_CEIL", i);
     case OpCode::FLOOR:
       return Instruction<OpCode::FLOOR>("OP_FLOOR", i);
+    case OpCode::ENV:
+      return Instruction<OpCode::ENV>("OP_ENV", i);
     case OpCode::PRINT:
       return Instruction<OpCode::PRINT>("OP_PRINT", i);
     case OpCode::LIST:

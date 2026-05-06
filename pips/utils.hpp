@@ -47,6 +47,20 @@ inline void StringToChar(std::string str, char *buff) {
   buff[len] = '\0';
 }
 
+inline bool ConvertToNumber(const std::string &str, Real &result) {
+
+  for( char c : str) {
+    if (std::isalpha(c) || c == '_') return false;
+    if (std::isdigit(c)) {
+      result = std::stod(str);
+      return true;
+    }
+  }
+  // probably a number
+  result = std::stod(str);
+  return true;
+}
+
 } // namespace Utils
 } // namespace pips
 #endif // PIPS_UTILS_HPP_

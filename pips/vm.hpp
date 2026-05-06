@@ -334,6 +334,20 @@ struct VM {
         push(NUMBER_VAL(std::floor(AS_NUMBER(pop()))));
         break;
       }
+      case OpCode::ENV: {
+        if (!IS_STRING(peek(0))) {
+          runtimeError("Operand must be a string");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        std::string evar = std::getenv(AS_STRING(pop()));
+        Real num_var = Utils::Big<Real>();
+        if (Utils::ConvertToNumber(evar, num_var)) {
+            push(NUMBER_VAL(num_var));
+        } else {
+            push(STRING_VAL(evar));
+        }
+        break;
+      }
       case OpCode::ADD: {
         if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
           concatenate();
