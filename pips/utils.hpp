@@ -8,8 +8,7 @@ namespace pips {
 
 namespace Utils {
 
-template <typename T>
-inline constexpr auto Big() {
+template <typename T> inline constexpr auto Big() {
   return std::numeric_limits<T>::max();
 }
 
@@ -31,8 +30,7 @@ inline char *readFile(std::string path) {
   return buffer;
 }
 
-template <typename E>
-constexpr auto to_underlying(E e) noexcept {
+template <typename E> constexpr auto to_underlying(E e) noexcept {
   return static_cast<std::underlying_type_t<E>>(e);
 }
 
@@ -49,8 +47,9 @@ inline void StringToChar(std::string str, char *buff) {
 
 inline bool ConvertToNumber(const std::string &str, Real &result) {
 
-  for( char c : str) {
-    if (std::isalpha(c) || c == '_') return false;
+  for (char c : str) {
+    if (std::isalpha(c) || c == '_')
+      return false;
     if (std::isdigit(c)) {
       result = std::stod(str);
       return true;

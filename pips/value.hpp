@@ -22,14 +22,14 @@ namespace pips {
 #define IS_NIL(value) ((value).type == ValueType::NIL)
 #define IS_NUMBER(value) ((value).type == ValueType::NUMBER)
 #define IS_STRING(value) ((value).type == ValueType::STRING)
-#define IS_NUMERIC(value) ((value).type == ValueType::NUMBER || (value).type == ValueType::BOOL)
+#define IS_NUMERIC(value)                                                      \
+  ((value).type == ValueType::NUMBER || (value).type == ValueType::BOOL)
 
 #define AS_BOOL(value) ((value).as.boolean)
 #define AS_NUMBER(value) ((value).as.number)
 #define AS_STRING(value) ((value).as.str)
 
 extern void printObject(Value val);
-
 
 inline std::int64_t AS_INTEGER(const Value &val) {
   if (IS_BOOL(val)) {
@@ -45,7 +45,8 @@ inline std::int64_t IS_INTEGRAL(const Value &val) {
   if (!IS_NUMBER(val)) {
     return false;
   }
-  if (static_cast<Real>(static_cast<std::int64_t>(AS_NUMBER(val))) == AS_NUMBER(val)) {
+  if (static_cast<Real>(static_cast<std::int64_t>(AS_NUMBER(val))) ==
+      AS_NUMBER(val)) {
     return true;
   }
   return false;
@@ -69,11 +70,13 @@ inline void printValue(const Value &val) {
 }
 
 inline bool stringCompare(Value a, Value b) {
-  if (a.type != ValueType::STRING || b.type != ValueType::STRING) return false;
+  if (a.type != ValueType::STRING || b.type != ValueType::STRING)
+    return false;
   return std::strcmp(a.as.str, b.as.str) == 0;
 }
 inline bool valuesEqual(Value a, Value b) {
-  if (a.type != b.type) return false;
+  if (a.type != b.type)
+    return false;
   switch (a.type) {
   case ValueType::BOOL:
     return AS_BOOL(a) == AS_BOOL(b);
