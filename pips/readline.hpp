@@ -96,8 +96,8 @@ inline std::optional<std::string> pips_readline(const char *prompt,
       tmp.c_cc[VTIME] = 1;  // 100 ms
       tcsetattr(STDIN_FILENO, TCSANOW, &tmp);
       char seq[2] = {0, 0};
-      ::read(STDIN_FILENO, &seq[0], 1);
-      ::read(STDIN_FILENO, &seq[1], 1);
+      (void)::read(STDIN_FILENO, &seq[0], 1);
+      (void)::read(STDIN_FILENO, &seq[1], 1);
       tcsetattr(STDIN_FILENO, TCSANOW, &raw);
 
       if (seq[0] == '[') {

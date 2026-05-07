@@ -191,8 +191,8 @@ struct VM {
       printf("\n");
       chunk->disassembleInstruction(static_cast<int>(ip - chunk->code.data()));
 #endif
-      std::uint8_t instruction;
-      switch (instruction = (*ip++)) {
+      std::uint8_t instruction = (*ip++);
+      switch (instruction) {
       case OpCode::NEGATE: {
         if (!IS_NUMBER(peek(0))) {
           runtimeError("Operand must be a number");
