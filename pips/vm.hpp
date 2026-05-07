@@ -10,7 +10,6 @@
 
 // #define DEBUG_TRACE_EXECUTION
 
-
 #include <cstring>
 #include <iostream>
 #include <stdarg.h>
@@ -18,12 +17,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include "math.hpp"
-#include "readline.hpp"
-#include "types.hpp"
 #include "chunk.hpp"
 #include "compiler.hpp"
+#include "math.hpp"
+#include "readline.hpp"
 #include "scanner.hpp"
+#include "types.hpp"
 #include "utils.hpp"
 #include "value.hpp"
 
@@ -39,68 +38,68 @@ enum class InterpretResult { OK, COMPILE_ERROR, RUNTIME_ERROR };
 //   But does the compiler also need to run on device?????
 
 // TODO: convert this to member function of VM
-#define BINARY_OP(valueType, op)                                                         \
-  do {                                                                                   \
-    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                                    \
-      runtimeError("Operands must be numbers.");                                         \
-      return InterpretResult::RUNTIME_ERROR;                                             \
-    }                                                                                    \
-    Real b = AS_NUMBER(pop());                                                    \
-    Real a = AS_NUMBER(pop());                                                    \
-    push(valueType(a op b));                                                             \
+#define BINARY_OP(valueType, op)                                               \
+  do {                                                                         \
+    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                          \
+      runtimeError("Operands must be numbers.");                               \
+      return InterpretResult::RUNTIME_ERROR;                                   \
+    }                                                                          \
+    Real b = AS_NUMBER(pop());                                                 \
+    Real a = AS_NUMBER(pop());                                                 \
+    push(valueType(a op b));                                                   \
   } while (false)
 
-#define MOD_OP(valueType)                                                                \
-  do {                                                                                   \
-    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                                    \
-                                                                                         \
-      runtimeError("Operands must be numbers.");                                         \
-      return InterpretResult::RUNTIME_ERROR;                                             \
-    }                                                                                    \
-    Real b = AS_NUMBER(pop());                                                    \
-    Real a = AS_NUMBER(pop());                                                    \
-    push(                                                                                \
-        valueType(static_cast<Real>(static_cast<int>(a) % static_cast<int>(b)))); \
+#define MOD_OP(valueType)                                                      \
+  do {                                                                         \
+    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                          \
+                                                                               \
+      runtimeError("Operands must be numbers.");                               \
+      return InterpretResult::RUNTIME_ERROR;                                   \
+    }                                                                          \
+    Real b = AS_NUMBER(pop());                                                 \
+    Real a = AS_NUMBER(pop());                                                 \
+    push(valueType(                                                            \
+        static_cast<Real>(static_cast<int>(a) % static_cast<int>(b))));        \
   } while (false)
 
-#define INTDIVIDE_OP(valueType)                                                          \
-  do {                                                                                   \
-    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                                    \
-                                                                                         \
-      runtimeError("Operands must be numbers.");                                         \
-      return InterpretResult::RUNTIME_ERROR;                                             \
-    }                                                                                    \
-    Real b = AS_NUMBER(pop());                                                    \
-    Real a = AS_NUMBER(pop());                                                    \
-    push(valueType(static_cast<Real>(static_cast<int>(a / b))));                  \
+#define INTDIVIDE_OP(valueType)                                                \
+  do {                                                                         \
+    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                          \
+                                                                               \
+      runtimeError("Operands must be numbers.");                               \
+      return InterpretResult::RUNTIME_ERROR;                                   \
+    }                                                                          \
+    Real b = AS_NUMBER(pop());                                                 \
+    Real a = AS_NUMBER(pop());                                                 \
+    push(valueType(static_cast<Real>(static_cast<int>(a / b))));               \
   } while (false)
 
-#define STD_BINARY_OP(func,valueType)                                                              \
-  do {                                                                                   \
-    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                                    \
-      runtimeError("Operands must be numbers.");                                         \
-      return InterpretResult::RUNTIME_ERROR;                                             \
-    }                                                                                    \
-    Real b = AS_NUMBER(pop());                                                    \
-    Real a = AS_NUMBER(pop());                                                    \
-    push(valueType(func(a, b)));                                                     \
+#define STD_BINARY_OP(func, valueType)                                         \
+  do {                                                                         \
+    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                          \
+      runtimeError("Operands must be numbers.");                               \
+      return InterpretResult::RUNTIME_ERROR;                                   \
+    }                                                                          \
+    Real b = AS_NUMBER(pop());                                                 \
+    Real a = AS_NUMBER(pop());                                                 \
+    push(valueType(func(a, b)));                                               \
   } while (false)
 
-#define BITWISE_OP(op)                                                                   \
-  do {                                                                                   \
-    if (!IS_INTEGRAL(peek(0)) || !IS_INTEGRAL(peek(1))) {                                \
-      runtimeError("Operands must be convertable to integers.");                         \
-      return InterpretResult::RUNTIME_ERROR;                                             \
-    }                                                                                   \
-    if (IS_BOOL(peek(0)) && IS_BOOL(peek(1))) {                                         \
-      bool b = AS_BOOL(pop());                                                        \
-      bool a = AS_BOOL(pop());                                                         \
-      push(BOOL_VAL(a op b));                                                          \
-    } else {                                                                            \
-      std::int64_t b = AS_INTEGER(pop());                                                     \
-      std::int64_t a = AS_INTEGER(pop());                                                     \
-      push(NUMBER_VAL(a op b));                                                         \
-    }                                                                                   \
+#define BITWISE_OP(op)                                                         \
+  do {                                                                         \
+    if (!IS_INTEGRAL(peek(0)) || !IS_INTEGRAL(peek(1))) {                      \
+      runtimeError("Operands must be convertable to integers.");               \
+      return InterpretResult::RUNTIME_ERROR;                                   \
+    }                                                                          \
+    if (IS_BOOL(peek(0)) && IS_BOOL(peek(1))) {                                \
+      bool b = AS_BOOL(pop());                                                 \
+      bool a = AS_BOOL(pop());                                                 \
+      push(BOOL_VAL(a op b));                                                  \
+    } else {                                                                   \
+      std::int64_t b = AS_INTEGER(pop());                                      \
+      std::int64_t a = AS_INTEGER(pop());                                      \
+      push(NUMBER_VAL(a op b));                                                \
+    }                                                                          \
   } while (false)
 
 struct VM {
@@ -173,7 +172,10 @@ struct VM {
     return *stackTop;
   }
   Value peek(int dist) { return stackTop[-1 - dist]; }
-  bool isFalsey(Value val) { return IS_NIL(val) || (IS_BOOL(val) && !AS_BOOL(val)) || (IS_INTEGRAL(val) && AS_INTEGER(val) == 0); }
+  bool isFalsey(Value val) {
+    return IS_NIL(val) || (IS_BOOL(val) && !AS_BOOL(val)) ||
+           (IS_INTEGRAL(val) && AS_INTEGER(val) == 0);
+  }
   void concatenate() {
     std::string a_str = (pop()).as.str;
     std::string b_str = (pop()).as.str;
@@ -347,9 +349,9 @@ struct VM {
         std::string evar = evar_;
         Real num_var = Utils::Big<Real>();
         if (Utils::ConvertToNumber(evar, num_var)) {
-            push(NUMBER_VAL(num_var));
+          push(NUMBER_VAL(num_var));
         } else {
-            push(STRING_VAL(evar));
+          push(STRING_VAL(evar));
         }
         break;
       }
@@ -465,12 +467,14 @@ struct VM {
             return InterpretResult::RUNTIME_ERROR;
           }
         }
-        if (!push(found->second)) return InterpretResult::RUNTIME_ERROR;
+        if (!push(found->second))
+          return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::GET_LOCAL: {
         std::uint8_t slot = *ip++;
-        if (!push(stack[slot])) return InterpretResult::RUNTIME_ERROR;
+        if (!push(stack[slot]))
+          return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::SET_LOCAL: {
@@ -480,19 +484,23 @@ struct VM {
       }
       case OpCode::CONSTANT: {
         Value constant = chunk->constants[(*ip++)];
-        if (!push(constant)) return InterpretResult::RUNTIME_ERROR;
+        if (!push(constant))
+          return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::NIL: {
-        if (!push(NIL_VAL)) return InterpretResult::RUNTIME_ERROR;
+        if (!push(NIL_VAL))
+          return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::TRUE: {
-        if (!push(BOOL_VAL(true))) return InterpretResult::RUNTIME_ERROR;
+        if (!push(BOOL_VAL(true)))
+          return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::FALSE: {
-        if (!push(BOOL_VAL(false))) return InterpretResult::RUNTIME_ERROR;
+        if (!push(BOOL_VAL(false)))
+          return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::EQUAL: {
@@ -514,20 +522,20 @@ struct VM {
       }
       case OpCode::LIST: {
         printf("Locals:\n");
-        for(const auto &v: locals) {
+        for (const auto &v : locals) {
           printf("  %s = ", v.first.c_str());
           printValue(v.second);
           printf("\n");
         }
         printf("Globals:\n");
-        for(const auto &v : globals) {
+        for (const auto &v : globals) {
           printf("  %s = ", v.first.c_str());
           printValue(v.second);
           printf("\n");
         }
         // print stack values
         printf("Stack (size %ld):\n", stackTop - stack);
-        for(Value *slot = stack; slot < stackTop; slot++) {
+        for (Value *slot = stack; slot < stackTop; slot++) {
           printf("  stack[%ld] = ", slot - stack);
           printValue(*slot);
           printf("\n");
@@ -536,7 +544,7 @@ struct VM {
       }
       case OpCode::LIST_GLOBALS: {
         printf("Globals:\n");
-        for(const auto &v : globals) {
+        for (const auto &v : globals) {
           printf("  %s = ", v.first.c_str());
           printValue(v.second);
           printf("\n");
@@ -545,7 +553,7 @@ struct VM {
       }
       case OpCode::LIST_LOCALS: {
         printf("Locals:\n");
-        for(const auto &v: locals) {
+        for (const auto &v : locals) {
           printf("  %s = ", v.first.c_str());
           printValue(v.second);
           printf("\n");
@@ -554,7 +562,7 @@ struct VM {
       }
       case OpCode::LIST_STACK: {
         printf("Stack (size %ld):\n", stackTop - stack);
-        for(Value *slot = stack; slot < stackTop; slot++) {
+        for (Value *slot = stack; slot < stackTop; slot++) {
           printf("  stack[%ld] = ", slot - stack);
           printValue(*slot);
           printf("\n");
@@ -566,17 +574,21 @@ struct VM {
         break;
       }
       case OpCode::JUMP_IF_FALSE: {
-        std::uint16_t offset = (ip += 2, static_cast<std::uint16_t>((ip[-2] << 8) | ip[-1]));
-        if (isFalsey(peek(0))) ip += offset;
+        std::uint16_t offset =
+            (ip += 2, static_cast<std::uint16_t>((ip[-2] << 8) | ip[-1]));
+        if (isFalsey(peek(0)))
+          ip += offset;
         break;
       }
       case OpCode::JUMP: {
-        std::uint16_t offset = (ip += 2, static_cast<std::uint16_t>((ip[-2] << 8) | ip[-1]));
+        std::uint16_t offset =
+            (ip += 2, static_cast<std::uint16_t>((ip[-2] << 8) | ip[-1]));
         ip += offset;
         break;
       }
       case OpCode::LOOP: {
-        std::uint16_t offset = (ip += 2, static_cast<std::uint16_t>((ip[-2] << 8) | ip[-1]));
+        std::uint16_t offset =
+            (ip += 2, static_cast<std::uint16_t>((ip[-2] << 8) | ip[-1]));
         ip -= offset;
         break;
       }
@@ -630,11 +642,15 @@ struct VM {
       const char *prompt = block ? "... " : ">>> ";
       std::string this_line;
       auto result = pips_readline(prompt, history);
-      if (!result) { printf("\n"); break; }
+      if (!result) {
+        printf("\n");
+        break;
+      }
       this_line = *result;
       {
         std::string trimmed = this_line;
-        if (!trimmed.empty() && trimmed.back() == '\n') trimmed.pop_back();
+        if (!trimmed.empty() && trimmed.back() == '\n')
+          trimmed.pop_back();
         if (!trimmed.empty() && (history.empty() || history.back() != trimmed))
           history.push_back(trimmed);
       }
@@ -645,14 +661,17 @@ struct VM {
         interpret(source.c_str(), end_line);
         block = false;
         source.clear();
-      } else if ((this_line[this_line.find_last_not_of(" \t\n\r\f\v")] == end_line) ||
-                 (this_line[this_line.find_last_not_of(" \t\n\r\f\v")] == ';')) {
+      } else if ((this_line[this_line.find_last_not_of(" \t\n\r\f\v")] ==
+                  end_line) ||
+                 (this_line[this_line.find_last_not_of(" \t\n\r\f\v")] ==
+                  ';')) {
         // ending a statement
         // check that we are not in a block
         if (not block) {
-          char end_line_ = (this_line[this_line.find_last_not_of(" \t\n\r\f\v")] == ';')
-                               ? ';'
-                               : end_line;
+          char end_line_ =
+              (this_line[this_line.find_last_not_of(" \t\n\r\f\v")] == ';')
+                  ? ';'
+                  : end_line;
           interpret(source.c_str(), end_line_);
           block = false;
           source.clear();
@@ -667,8 +686,10 @@ struct VM {
     char *source = Utils::readFile(path);
     auto result = interpret(source);
     std::free(source);
-    if (result == InterpretResult::COMPILE_ERROR) exit(65);
-    if (result == InterpretResult::RUNTIME_ERROR) exit(70);
+    if (result == InterpretResult::COMPILE_ERROR)
+      exit(65);
+    if (result == InterpretResult::RUNTIME_ERROR)
+      exit(70);
   }
 };
 } // namespace pips

@@ -112,7 +112,8 @@ struct Token {
     length = 0;
     line = 0;
   }
-  Token(const char *msg, int line_) : type(TokenType::ERROR), start(msg), line(line_) {
+  Token(const char *msg, int line_)
+      : type(TokenType::ERROR), start(msg), line(line_) {
     length = static_cast<int>(std::strlen(msg));
   }
   Token(TokenType type_, const char *start_, const char *current_, int line_)
@@ -149,20 +150,24 @@ struct Scanner {
   }
   char peek() { return *current; }
   char peekNext() {
-    if (*current == '\0') return '\0';
+    if (*current == '\0')
+      return '\0';
     return current[1];
   }
   bool match(char expected) {
-    if ((*current == '\0') || (*current != expected)) return false;
+    if ((*current == '\0') || (*current != expected))
+      return false;
     current++;
     return true;
   }
   Token string() {
     while ((peek() != '"') && (*current != '\0')) {
-      if (peek() == '\n') line++;
+      if (peek() == '\n')
+        line++;
       advance();
     }
-    if (*current == '\0') return Token("Unterminated string.", line);
+    if (*current == '\0')
+      return Token("Unterminated string.", line);
     advance(); // past the "
     return Token(TokenType::STRING, start, current, line);
   }
@@ -201,11 +206,14 @@ struct Scanner {
     }
   }
   inline bool matchKeyword(const int st, const int len, const char *rest) {
-    return (current - start == st + len && std::memcmp(start + st, rest, len) == 0);
+    return (current - start == st + len &&
+            std::memcmp(start + st, rest, len) == 0);
   }
 
-  TokenType checkKeyword(const int st, const int len, const char *rest, TokenType type) {
-    if (matchKeyword(st, len, rest)) return type;
+  TokenType checkKeyword(const int st, const int len, const char *rest,
+                         TokenType type) {
+    if (matchKeyword(st, len, rest))
+      return type;
     return TokenType::IDENTIFIER;
   }
 
@@ -227,8 +235,8 @@ struct Scanner {
             return TokenType::ATAN2;
           else if (matchKeyword(2, 2, "an"))
             return TokenType::ATAN;
-        } 
-       }
+        }
+        }
       }
       break;
     }
@@ -318,13 +326,17 @@ struct Scanner {
         case 'l':
           if (current - start > 3) {
             switch (start[3]) {
-            case 'i': return checkKeyword(4, 4, "st__", TokenType::LIST);
-            case 'o': return checkKeyword(4, 6, "cals__", TokenType::LOCALS);
+            case 'i':
+              return checkKeyword(4, 4, "st__", TokenType::LIST);
+            case 'o':
+              return checkKeyword(4, 6, "cals__", TokenType::LOCALS);
             }
           }
           break;
-        case 'g': return checkKeyword(3, 8, "lobals__", TokenType::GLOBALS);
-        case 's': return checkKeyword(3, 6, "tack__", TokenType::STACK);
+        case 'g':
+          return checkKeyword(3, 8, "lobals__", TokenType::GLOBALS);
+        case 's':
+          return checkKeyword(3, 6, "tack__", TokenType::STACK);
         }
       }
       break;
@@ -352,8 +364,7 @@ struct Scanner {
           if (matchKeyword(2, 2, "gn"))
             return TokenType::SIGN;
           else if (matchKeyword(2, 1, "n"))
-          return TokenType::SIN;
-
+            return TokenType::SIN;
         }
         case 'q':
           return checkKeyword(2, 2, "rt", TokenType::SQRT);
@@ -375,7 +386,8 @@ struct Scanner {
       break;
     }
 #ifndef NO_VAR_DECL
-    case 'v': return checkKeyword(1, 2, "ar", TokenType::VAR);
+    case 'v':
+      return checkKeyword(1, 2, "ar", TokenType::VAR);
 #endif
     case 'w':
       return checkKeyword(1, 4, "hile", TokenType::WHILE);
@@ -391,8 +403,8 @@ struct Scanner {
       advance();
 
     if ((peek() == '.') &&
-        ((std::isalpha(peekNext()) || std::isdigit(peekNext()) || peekNext() == '_' ||
-          peekNext() == '[' || peekNext() == ']'))) {
+        ((std::isalpha(peekNext()) || std::isdigit(peekNext()) ||
+          peekNext() == '_' || peekNext() == '[' || peekNext() == ']'))) {
       advance(); // consume '.'
       identifier();
     }
@@ -409,7 +421,8 @@ struct Scanner {
       while (std::isdigit(peek()))
         advance();
     }
-    if ((peek() == 'e') || (peek() == 'E') || (peek() == 'd') || (peek() == 'D')) {
+    if ((peek() == 'e') || (peek() == 'E') || (peek() == 'd') ||
+        (peek() == 'D')) {
       advance(); // consume e/E/d/D
       if ((peek() == '+') || (peek() == '-')) {
         advance(); // consume +/-
@@ -431,9 +444,12 @@ struct Scanner {
       return Token(TokenType::END, start, current, line);
     }
     char c = advance();
-    if (std::isalpha(c) || c == '_') return identifier();
-    if (std::isdigit(c)) return number();
-    if ((c == '.') && std::isdigit(peek())) return number();
+    if (std::isalpha(c) || c == '_')
+      return identifier();
+    if (std::isdigit(c))
+      return number();
+    if ((c == '.') && std::isdigit(peek()))
+      return number();
 
     switch (c) {
     case '(':
@@ -469,17 +485,17 @@ struct Scanner {
     case '&':
       return Token(TokenType::BAND, start, current, line);
     case '*':
-      return Token(match('*') ? TokenType::STAR_STAR : TokenType::STAR, start, current,
-                   line);
+      return Token(match('*') ? TokenType::STAR_STAR : TokenType::STAR, start,
+                   current, line);
     case '/':
-      return Token(match('/') ? TokenType::SLASH_SLASH : TokenType::SLASH, start, current,
-                   line);
+      return Token(match('/') ? TokenType::SLASH_SLASH : TokenType::SLASH,
+                   start, current, line);
     case '!':
-      return Token(match('=') ? TokenType::BANG_EQUAL : TokenType::BANG, start, current,
-                   line);
+      return Token(match('=') ? TokenType::BANG_EQUAL : TokenType::BANG, start,
+                   current, line);
     case '=':
-      return Token(match('=') ? TokenType::EQUAL_EQUAL : TokenType::EQUAL, start, current,
-                   line);
+      return Token(match('=') ? TokenType::EQUAL_EQUAL : TokenType::EQUAL,
+                   start, current, line);
     case '<':
       if (match('=')) {
         return Token(TokenType::LESS_EQUAL, start, current, line);

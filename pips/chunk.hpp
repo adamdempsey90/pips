@@ -72,13 +72,11 @@ enum OpCode {
   RETURN
 };
 
-template <OpCode OP>
-inline constexpr bool is_ConstOp() {
+template <OpCode OP> inline constexpr bool is_ConstOp() {
   return ((OP == OpCode::CONSTANT) || (OP == OpCode::DEFINE_GLOBAL) ||
           (OP == OpCode::GET_GLOBAL) || (OP == OpCode::SET_GLOBAL));
 }
-template <OpCode OP>
-inline constexpr bool is_ByteOp() {
+template <OpCode OP> inline constexpr bool is_ByteOp() {
   return ((OP == OpCode::SET_LOCAL) || (OP == OpCode::SET_LOCAL));
 }
 
@@ -104,8 +102,7 @@ struct Chunk {
     constants.push_back(val);
     return constants.size() - 1;
   }
-  template <OpCode OP>
-  int Instruction(std::string name, int i) {
+  template <OpCode OP> int Instruction(std::string name, int i) {
 
     if constexpr (!is_ConstOp<OP>()) {
       printf("%s\n", name.c_str());

@@ -13,9 +13,9 @@
 #include <cmath>
 #include <tuple>
 
-#include "types.hpp"
 #include "chunk.hpp"
 #include "scanner.hpp"
+#include "types.hpp"
 #include "utils.hpp"
 #include "value.hpp"
 #include "vm.hpp"
@@ -60,7 +60,8 @@ struct Parser {
     scanner = scanner_;
   }
   void errorAt(Token &token, const char *msg) {
-    if (panicMode) return;
+    if (panicMode)
+      return;
     panicMode = true;
     std::fprintf(stderr, "[line %d] Error", token.line);
     if (token.type == TokenType::END) {
@@ -80,7 +81,8 @@ struct Parser {
     previous = current;
     for (;;) {
       current = scanner->scanToken();
-      if (current.type != TokenType::ERROR) break;
+      if (current.type != TokenType::ERROR)
+        break;
       errorAtCurrent(current.start);
     }
   }
@@ -351,8 +353,8 @@ struct Compiler {
   // clang-format on
   Compiler() = default;
   Compiler(VM *vm_, char end_line = '\n')
-      : pvm(vm_), compilingChunk(nullptr), localCount(0), scopeDepth(0), parser(nullptr),
-        end_line(end_line) {};
+      : pvm(vm_), compilingChunk(nullptr), localCount(0), scopeDepth(0),
+        parser(nullptr), end_line(end_line) {};
 
   Compiler(VM *vm_, const char *source, char end_line = '\n')
       : scanner(source), parser(&scanner), pvm(vm_), compilingChunk(nullptr),
@@ -369,7 +371,9 @@ struct Compiler {
   void set_current(Compiler *curr) { current = curr; }
   Chunk *currentChunk() { return compilingChunk; }
 
-  void emitByte(std::uint8_t byte) { currentChunk()->write(byte, parser.previous.line); }
+  void emitByte(std::uint8_t byte) {
+    currentChunk()->write(byte, parser.previous.line);
+  }
   void emitBytes(std::uint8_t byte1, std::uint8_t byte2) {
     emitByte(byte1);
     emitByte(byte2);
@@ -383,7 +387,9 @@ struct Compiler {
     return static_cast<std::uint8_t>(constant);
   }
   void emitReturn() { emitByte(OpCode::RETURN); }
-  void emitConstant(Value val) { emitBytes(OpCode::CONSTANT, makeConstant(val)); }
+  void emitConstant(Value val) {
+    emitBytes(OpCode::CONSTANT, makeConstant(val));
+  }
 
   void parsePrecedence(Precedence precedence) {
     parser.advance();
@@ -392,8 +398,8 @@ struct Compiler {
       parser.error("Expect expression");
       return;
     }
-    bool canAssign =
-        Utils::to_underlying(precedence) <= Utils::to_underlying(Precedence::ASSIGNMENT);
+    bool canAssign = Utils::to_underlying(precedence) <=
+                     Utils::to_underlying(Precedence::ASSIGNMENT);
     (this->*prefix)(canAssign);
 
     const auto &[_f1, _f2, prec2_] = getRule(parser.current.type);
@@ -425,11 +431,13 @@ struct Compiler {
     local->depth = current->scopeDepth;
   }
   bool identifiersEqual(Token *a, Token *b) {
-    if (a->length != b->length) return false;
+    if (a->length != b->length)
+      return false;
     return std::memcmp(a->start, b->start, a->length) == 0;
   }
   void declareVariable() {
-    if (current->scopeDepth == 0) return;
+    if (current->scopeDepth == 0)
+      return;
     Token *name = &parser.previous;
     for (int i = current->localCount - 1; i >= 0; i--) {
       Local *local = &current->locals[i];
@@ -445,19 +453,21 @@ struct Compiler {
   void varDeclarationNoVar() {
     // TODO:
     // This does not handle scope correctly
-    // Related to the different handling of a variable declaration and a statement
-    // if (some condition) {
+    // Related to the different handling of a variable declaration and a
+    // statement if (some condition) {
     //   return statement();
     //}
     declareVariable();
-    std::uint8_t global = (current->scopeDepth > 0) ? 0 : identifierConstant(&parser.previous);
+    std::uint8_t global =
+        (current->scopeDepth > 0) ? 0 : identifierConstant(&parser.previous);
     if (match(TokenType::EQUAL)) {
       expression();
     } else {
       emitByte(OpCode::NIL);
     }
     if (end_line == ';')
-      parser.consume(TokenType::SEMICOLON, "Expect ';' after variable declaration.");
+      parser.consume(TokenType::SEMICOLON,
+                     "Expect ';' after variable declaration.");
     defineVariable(global);
   }
   void varDeclaration() {
@@ -468,7 +478,8 @@ struct Compiler {
       emitByte(OpCode::NIL);
     }
     if (end_line == ';')
-      parser.consume(TokenType::SEMICOLON, "Expect ';' after variable declaration.");
+      parser.consume(TokenType::SEMICOLON,
+                     "Expect ';' after variable declaration.");
     defineVariable(global);
   }
 
@@ -481,7 +492,8 @@ struct Compiler {
   std::uint8_t parseVariable(const char *msg) {
     parser.consume(TokenType::IDENTIFIER, msg);
     declareVariable();
-    if (current->scopeDepth > 0) return 0;
+    if (current->scopeDepth > 0)
+      return 0;
     return identifierConstant(&parser.previous);
   }
   void markInitialized() {
@@ -542,8 +554,7 @@ struct Compiler {
   }
   void variable(bool canAssign) { namedVariable(parser.previous, canAssign); }
   void number(bool tmp_) {
-    Real value =
-        static_cast<Real>(std::strtod(parser.previous.start, NULL));
+    Real value = static_cast<Real>(std::strtod(parser.previous.start, NULL));
     emitConstant(NUMBER_VAL(value));
   }
   void getPI(bool tmp_) { emitConstant(NUMBER_VAL(std::acos(-1.0L))); }
@@ -600,7 +611,8 @@ struct Compiler {
     expression();
     parser.consume(TokenType::COMMA, "Expect ',' between arguments to atan.");
     expression();
-    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after arguments to atan.");
+    parser.consume(TokenType::RIGHT_PAREN,
+                   "Expect ')' after arguments to atan.");
   }
   void atan2(bool tmp_) {
     binary_consume();
@@ -721,24 +733,26 @@ struct Compiler {
     emitByte(OpCode::POP);
 
     parsePrecedence(Precedence::TERNARY);
-    
+
     int elseJump = emitJump(OpCode::JUMP);
     patchJump(thenJump);
     emitByte(OpCode::POP);
-    
-    parser.consume(TokenType::COLON, "Expect ':' after true expression in ternary operator.");
-    
+
+    parser.consume(TokenType::COLON,
+                   "Expect ':' after true expression in ternary operator.");
+
     parsePrecedence(Precedence::TERNARY);
-    
+
     patchJump(elseJump);
   }
   void string(bool tmp_) {
     // The +1 and -2 remove the leading and trailing "
-    // If we supported strings without the need of " " we would remove that and possibly
-    // make this the default case of the keyword switch?
+    // If we supported strings without the need of " " we would remove that and
+    // possibly make this the default case of the keyword switch?
     Value val;
     val.type = ValueType::STRING;
-    std::memcpy(val.as.str, parser.previous.start + 1, parser.previous.length - 2);
+    std::memcpy(val.as.str, parser.previous.start + 1,
+                parser.previous.length - 2);
     val.as.str[parser.previous.length - 2] = '\0';
     emitConstant(val);
   }
@@ -761,7 +775,8 @@ struct Compiler {
   void synchronize() {
     parser.panicMode = false;
     while (parser.current.type != TokenType::END) {
-      if (parser.previous.type == TokenType::SEMICOLON) return;
+      if (parser.previous.type == TokenType::SEMICOLON)
+        return;
       switch (parser.current.type) {
       case TokenType::CLASS:
       case TokenType::FUN:
@@ -784,19 +799,23 @@ struct Compiler {
   void listStatement() {
     // dump the current list of variables
     emitByte(OpCode::LIST);
-    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
+    if (end_line == ';')
+      parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
   }
   void globalsStatement() {
     emitByte(OpCode::LIST_GLOBALS);
-    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
+    if (end_line == ';')
+      parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
   }
   void localsStatement() {
     emitByte(OpCode::LIST_LOCALS);
-    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
+    if (end_line == ';')
+      parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
   }
   void stackStatement() {
     emitByte(OpCode::LIST_STACK);
-    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
+    if (end_line == ';')
+      parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
   }
   void printStatement() {
     parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'print'.");
@@ -807,7 +826,8 @@ struct Compiler {
     } while (match(TokenType::COMMA));
     emitByte(OpCode::NEWLINE);
     parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after value.");
-    if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
+    if (end_line == ';')
+      parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
   }
   void expressionStatement() {
     expression();
@@ -835,7 +855,8 @@ struct Compiler {
   void emitLoop(int loopStart) {
     emitByte(OpCode::LOOP);
     int offset = currentChunk()->code.size() - loopStart + 2;
-    if (offset > UINT16_MAX) parser.error("Loop body too large.");
+    if (offset > UINT16_MAX)
+      parser.error("Loop body too large.");
 
     emitByte((offset >> 8) & 0xff);
     emitByte(offset & 0xff);
@@ -853,7 +874,8 @@ struct Compiler {
     patchJump(thenJump);
     emitByte(OpCode::POP);
 
-    if (match(TokenType::ELSE)) statement();
+    if (match(TokenType::ELSE))
+      statement();
     patchJump(elseJump);
   }
   void whileStatement() {
@@ -889,7 +911,8 @@ struct Compiler {
     int exitJump = -1;
     if (!match(TokenType::SEMICOLON)) {
       expression();
-      if (end_line == ';') parser.consume(TokenType::SEMICOLON, "Expect ';'.");
+      if (end_line == ';')
+        parser.consume(TokenType::SEMICOLON, "Expect ';'.");
 
       exitJump = emitJump(OpCode::JUMP_IF_FALSE);
       emitByte(OpCode::POP);
@@ -924,7 +947,8 @@ struct Compiler {
   }
   bool check(TokenType type) { return parser.current.type == type; }
   bool match(TokenType type) {
-    if (!check(type)) return false;
+    if (!check(type))
+      return false;
     parser.advance();
     return true;
   }
@@ -938,7 +962,8 @@ struct Compiler {
   void endScope() {
     current->scopeDepth--;
     while (current->localCount > 0 &&
-           current->locals[current->localCount - 1].depth > current->scopeDepth) {
+           current->locals[current->localCount - 1].depth >
+               current->scopeDepth) {
       emitByte(OpCode::POP);
       current->localCount--;
     }
@@ -973,10 +998,10 @@ struct Compiler {
     // check if var is defined
     if (match(TokenType::VAR)) {
       varDeclaration();
-    } 
+    }
 #ifdef NO_VAR_DECL
-   // This should sometimes go down the statement path 
-   // if we are updating a variable that was declared in a lower scope
+    // This should sometimes go down the statement path
+    // if we are updating a variable that was declared in a lower scope
     else if (match(TokenType::IDENTIFIER)) {
       varDeclarationNoVar();
     }
@@ -984,7 +1009,8 @@ struct Compiler {
     else {
       statement();
     }
-    if (parser.panicMode) synchronize();
+    if (parser.panicMode)
+      synchronize();
   }
   bool compile(Chunk *chunk) {
     compilingChunk = chunk;

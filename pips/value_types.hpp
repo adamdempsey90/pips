@@ -33,8 +33,7 @@ struct Value {
     type = ValueType::NIL;
     as.number = 0;
   }
-  template <typename T>
-  Value(T v) {
+  template <typename T> Value(T v) {
     if constexpr (std::is_same_v<T, std::string>) {
       type = ValueType::STRING;
       StringToChar(v, as.str);
