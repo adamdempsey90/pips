@@ -673,6 +673,12 @@ struct VM {
         if (trimmed == "exit") {
           return;
         }
+        if (!trimmed.empty() && trimmed[0] == '!') {
+          std::system(trimmed.c_str() + 1);
+          source.clear();
+          block = false;
+          continue;
+        }
       }
 
       if (this_line == "\n") {
