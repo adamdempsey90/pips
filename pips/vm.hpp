@@ -656,6 +656,31 @@ struct VM {
       }
       source += this_line;
 
+      // Built-in REPL commands
+      {
+        std::string trimmed = source;
+        auto first = trimmed.find_first_not_of(" \t\n\r\f\v");
+        auto last  = trimmed.find_last_not_of(" \t\n\r\f\v");
+        if (first != std::string::npos)
+          trimmed = trimmed.substr(first, last - first + 1);
+        if (trimmed == "clear") {
+          printf("\033[2J\033[H");
+          fflush(stdout);
+          source.clear();
+          block = false;
+          continue;
+        }
+        if (trimmed == "exit") {
+          return;
+        }
+        if (!trimmed.empty() && trimmed[0] == '!') {
+          std::system(trimmed.c_str() + 1);
+          source.clear();
+          block = false;
+          continue;
+        }
+      }
+
       if (this_line == "\n") {
         // empty line ends a block
         interpret(source.c_str(), end_line);
