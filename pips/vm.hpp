@@ -19,6 +19,7 @@
 
 #include "chunk.hpp"
 #include "compiler.hpp"
+#include "function.hpp"
 #include "math.hpp"
 #include "readline.hpp"
 #include "scanner.hpp"
@@ -107,43 +108,26 @@ struct VM {
   std::uint8_t *ip;
   Value stack[STACK_MAX];
   Value *stackTop;
+  Value *frameBase;
 
   // Table strings;
   VTable globals;
 
-  Compiler *current;
+  // Table of functions
+  std::unordered_map<std::string, Function> functions;
+
+  CallFrame frames[FRAMES_MAX];
+  int frameCount = 0;
 
   VM() {
     // reset the stack pointer
     stackTop = stack;
-    current = nullptr;
+    frameBase = stack;
   }
-  ~VM() = default; //{ freeObjects(); }
+  ~VM() = default; 
 
-  // void freeObject(Obj *object) {
-  //   switch (object->type) {
-  //   case ObjType::STRING: {
-  //     ObjString *string = (ObjString *)object;
-  //     FREE_ARRAY(char, string->chars, string->length + 1);
-  //     FREE(ObjString, object);
-  //     break;
-  //   }
-  //   }
-  // }
-  // void freeObjects() {
-  //   Obj *object = objects;
-  //   while (object != nullptr) {
-  //     Obj *next = object->next;
-  //     freeObject(object);
-  //     object = next;
-  //   }
-  // }
 
-  void initCompiler(Compiler *compiler) {
-    compiler->localCount = 0;
-    compiler->scopeDepth = 0;
-    current = compiler;
-  }
+
 
   void runtimeError(const char *fmt, ...) {
     va_list args;
@@ -363,7 +347,7 @@ struct VM {
           Real a = AS_NUMBER(pop());
           push(NUMBER_VAL(a + b));
         } else {
-          runtimeError("Operands must be two nuumbers or two strings!");
+          runtimeError("Operands must be two numbers or two strings!");
           return InterpretResult::RUNTIME_ERROR;
         }
         break;
@@ -429,20 +413,61 @@ struct VM {
         break;
       }
       case OpCode::RETURN: {
-        return InterpretResult::OK;
+        Value result = pop();
+        if (frameCount == 0) {
+          // returning from top-level script
+          return InterpretResult::OK;
+        }
+        frameCount--;
+        // Unwind callee's locals and args.
+        stackTop = frameBase;
+        // Restore caller frame.
+        chunk = frames[frameCount].chunk;
+        ip = frames[frameCount].ip;
+        frameBase = frames[frameCount].slots;
+        push(result);
+        break;
+      }
+      case OpCode::CALL: {
+        std::string name = AS_STRING(chunk->constants[(*ip++)]);
+        std::uint8_t argc = *ip++;
+        auto it = functions.find(name);
+        if (it == functions.end()) {
+          runtimeError("Undefined function '%s'.", name.c_str());
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        Function &fn = it->second;
+        if (argc != fn.arity) {
+          runtimeError("Expected %d arguments to function '%s' but got %d.", fn.arity, name.c_str(), argc);
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (frameCount == FRAMES_MAX) {
+          runtimeError("Frame stack overflow.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        // Save caller's state into the frame slot.
+        frames[frameCount].function = &fn;
+        frames[frameCount].chunk = chunk;
+        frames[frameCount].ip = ip;
+        frames[frameCount].slots = frameBase;
+        frameCount++;
+        // Activate callee.
+        chunk = &fn.chunk;
+        ip = chunk->code.data();
+        frameBase = stackTop - argc;
         break;
       }
       case OpCode::POP:
         pop();
         break;
       case OpCode::DEFINE_GLOBAL: {
-        std::string name = chunk->constants[(*ip++)].as.str;
+        std::string name = AS_STRING(chunk->constants[(*ip++)]);
         globals[Utils::getKey(name.c_str())] = peek(0);
         pop();
         break;
       }
       case OpCode::SET_GLOBAL: {
-        std::string name = chunk->constants[(*ip++)].as.str;
+        std::string name = AS_STRING(chunk->constants[(*ip++)]);
         auto key = Utils::getKey(name.c_str());
         // for implicit declaration change to just
         // global[key] = peek(0);
@@ -458,7 +483,7 @@ struct VM {
         break;
       }
       case OpCode::GET_GLOBAL: {
-        std::string name = chunk->constants[(*ip++)].as.str;
+        std::string name = AS_STRING(chunk->constants[(*ip++)]);
         auto found = locals.find(Utils::getKey(name.c_str()));
         if (found == locals.end()) {
           found = globals.find(Utils::getKey(name.c_str()));
@@ -473,13 +498,13 @@ struct VM {
       }
       case OpCode::GET_LOCAL: {
         std::uint8_t slot = *ip++;
-        if (!push(stack[slot]))
+        if (!push(frameBase[slot]))
           return InterpretResult::RUNTIME_ERROR;
         break;
       }
       case OpCode::SET_LOCAL: {
         std::uint8_t slot = *ip++;
-        stack[slot] = peek(0);
+        frameBase[slot] = peek(0);
         break;
       }
       case OpCode::CONSTANT: {
@@ -540,6 +565,17 @@ struct VM {
           printValue(*slot);
           printf("\n");
         }
+        printf("Functions:\n");
+        for (const auto &f : functions) {
+          // print function signature
+          printf("  %s(", f.first.c_str());
+          for (int i = 0; i < f.second.arity; i++) {
+            printf("arg%d", i);
+            if (i < f.second.arity - 1)
+              printf(", ");
+          }
+          printf(")\n");
+        }
         break;
       }
       case OpCode::LIST_GLOBALS: {
@@ -566,6 +602,20 @@ struct VM {
           printf("  stack[%ld] = ", slot - stack);
           printValue(*slot);
           printf("\n");
+        }
+        break;
+      }
+      case OpCode::LIST_FUNC: {
+        printf("Functions:\n");
+        for (const auto &f : functions) {
+          // print function signature
+          printf("  %s(", f.first.c_str());
+          for (int i = 0; i < f.second.arity; i++) {
+            printf("arg%d", i);
+            if (i < f.second.arity - 1)
+              printf(", ");
+          }
+          printf(")\n");
         }
         break;
       }
@@ -597,40 +647,34 @@ struct VM {
   }
 
   InterpretResult interpret(const char *source, char end_line = ';') {
-
-    // Think about shared_ptr?
-    Chunk chunk_;
+    Function script;
+    script.name = "__main__";
     Compiler compiler(this, source, end_line);
-    initCompiler(&compiler);
-    compiler.set_current(current);
-
-    // compiler.init(source);
-    if (!compiler.compile(&chunk_)) {
+    if (!compiler.compile(&script, &functions)) {
       return InterpretResult::COMPILE_ERROR;
     }
 
-    chunk = &chunk_;
-    ip = chunk_.code.data();
+    chunk = &script.chunk;
+    ip = script.chunk.code.data();
+    frameBase = stack;
+    frameCount = 0;
 
     VTable locals;
 
     return run(locals);
   }
   InterpretResult interpret(const char *source, char end_line, VTable &locals) {
-
-    // Think about shared_ptr?
-    Chunk chunk_;
+    Function script;
+    script.name = "__main__";
     Compiler compiler(this, source, end_line);
-    initCompiler(&compiler);
-    compiler.set_current(current);
-
-    // compiler.init(source);
-    if (!compiler.compile(&chunk_)) {
+    if (!compiler.compile(&script, &functions)) {
       return InterpretResult::COMPILE_ERROR;
     }
 
-    chunk = &chunk_;
-    ip = chunk_.code.data();
+    chunk = &script.chunk;
+    ip = script.chunk.code.data();
+    frameBase = stack;
+    frameCount = 0;
 
     return run(locals);
   }
