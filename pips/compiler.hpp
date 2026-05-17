@@ -492,6 +492,7 @@ struct Compiler {
       }
       if (identifiersEqual(name, &local->name)) {
         parser.error("Already a variable with this name in this scope.");
+        return;
       }
     }
     addLocal(*name);
@@ -564,36 +565,82 @@ struct Compiler {
     }
     return -1;
   }
-  void namedVariable(Token name, bool canAssign) {
-    std::uint8_t getOp, setOp;
-    int arg = resolveLocal(current, &name);
-    if (arg != -1) {
-      getOp = OpCode::GET_LOCAL;
-      setOp = OpCode::SET_LOCAL;
-    } else {
-      arg = identifierConstant(&name);
-      getOp = OpCode::GET_GLOBAL;
-      setOp = OpCode::SET_GLOBAL;
+  // Walk enclosing function scopes looking for `name` as a local
+  int resolveOuter(CompilerState *comp, Token *name,
+                   std::uint8_t &outNameConst) {
+    for (CompilerState *s = comp->enclosing; s != nullptr; s = s->enclosing) {
+      if (s->type != FunctionType::FUNCTION)
+        continue;
+      int slot = resolveLocal(s, name);
+      if (slot != -1) {
+        Value v;
+        v.type = ValueType::STRING;
+        // Copy the enclosing function's name into a string Value.
+        std::strncpy(v.as.str, s->function->name.c_str(),
+                     sizeof(v.as.str) - 1);
+        v.as.str[sizeof(v.as.str) - 1] = '\0';
+        outNameConst = makeConstant(v);
+        return slot;
+      }
     }
+    return -1;
+  }
+  void namedVariable(Token name, bool canAssign) {
+    int localArg = resolveLocal(current, &name);
+    int outerSlot = -1;
+    std::uint8_t outerNameConst = 0;
+    std::uint8_t globalArg = 0;
+    enum Kind { LOCAL, OUTER, GLOBAL } kind;
+    if (localArg != -1) {
+      kind = LOCAL;
+    } else if ((outerSlot = resolveOuter(current, &name, outerNameConst)) !=
+               -1) {
+      kind = OUTER;
+    } else {
+      kind = GLOBAL;
+      globalArg = identifierConstant(&name);
+    }
+    auto emitGet = [&]() {
+      if (kind == LOCAL) {
+        emitBytes(OpCode::GET_LOCAL, (std::uint8_t)localArg);
+      } else if (kind == OUTER) {
+        emitByte(OpCode::GET_OUTER);
+        emitByte(outerNameConst);
+        emitByte((std::uint8_t)outerSlot);
+      } else {
+        emitBytes(OpCode::GET_GLOBAL, globalArg);
+      }
+    };
+    auto emitSet = [&]() {
+      if (kind == LOCAL) {
+        emitBytes(OpCode::SET_LOCAL, (std::uint8_t)localArg);
+      } else if (kind == OUTER) {
+        emitByte(OpCode::SET_OUTER);
+        emitByte(outerNameConst);
+        emitByte((std::uint8_t)outerSlot);
+      } else {
+        emitBytes(OpCode::SET_GLOBAL, globalArg);
+      }
+    };
     if (canAssign && match(TokenType::EQUAL)) {
       expression();
-      emitBytes(setOp, (std::uint8_t)arg);
+      emitSet();
       return;
     }
     if (canAssign) {
       // Compound assignment
       auto compound = [&](OpCode op) {
-        emitBytes(getOp, (std::uint8_t)arg);
+        emitGet();
         expression();
         emitByte(op);
-        emitBytes(setOp, (std::uint8_t)arg);
+        emitSet();
       };
       // Postfix increment/decrement
       auto incDec = [&](OpCode op) {
-        emitBytes(getOp, (std::uint8_t)arg);
+        emitGet();
         emitConstant(NUMBER_VAL(1.0));
         emitByte(op);
-        emitBytes(setOp, (std::uint8_t)arg);
+        emitSet();
       };
       if (match(TokenType::PLUS_EQUAL))   { compound(OpCode::ADD);      return; }
       if (match(TokenType::MINUS_EQUAL))  { compound(OpCode::SUBTRACT); return; }
@@ -607,27 +654,38 @@ struct Compiler {
       if (match(TokenType::PLUS_PLUS))    { incDec(OpCode::ADD);        return; }
       if (match(TokenType::MINUS_MINUS))  { incDec(OpCode::SUBTRACT);   return; }
     }
-    emitBytes(getOp, (std::uint8_t)arg);
+    emitGet();
   }
   // Prefix ++x / --x
   void preIncDec(OpCode op) {
     parser.consume(TokenType::IDENTIFIER,
                    "Expect variable name after '++' or '--'.");
     Token name = parser.previous;
-    std::uint8_t getOp, setOp;
-    int arg = resolveLocal(current, &name);
-    if (arg != -1) {
-      getOp = OpCode::GET_LOCAL;
-      setOp = OpCode::SET_LOCAL;
+    int localArg = resolveLocal(current, &name);
+    int outerSlot = -1;
+    std::uint8_t outerNameConst = 0;
+    if (localArg != -1) {
+      emitBytes(OpCode::GET_LOCAL, (std::uint8_t)localArg);
+      emitConstant(NUMBER_VAL(1.0));
+      emitByte(op);
+      emitBytes(OpCode::SET_LOCAL, (std::uint8_t)localArg);
+    } else if ((outerSlot = resolveOuter(current, &name, outerNameConst)) !=
+               -1) {
+      emitByte(OpCode::GET_OUTER);
+      emitByte(outerNameConst);
+      emitByte((std::uint8_t)outerSlot);
+      emitConstant(NUMBER_VAL(1.0));
+      emitByte(op);
+      emitByte(OpCode::SET_OUTER);
+      emitByte(outerNameConst);
+      emitByte((std::uint8_t)outerSlot);
     } else {
-      arg = identifierConstant(&name);
-      getOp = OpCode::GET_GLOBAL;
-      setOp = OpCode::SET_GLOBAL;
+      std::uint8_t arg = identifierConstant(&name);
+      emitBytes(OpCode::GET_GLOBAL, arg);
+      emitConstant(NUMBER_VAL(1.0));
+      emitByte(op);
+      emitBytes(OpCode::SET_GLOBAL, arg);
     }
-    emitBytes(getOp, (std::uint8_t)arg);
-    emitConstant(NUMBER_VAL(1.0));
-    emitByte(op);
-    emitBytes(setOp, (std::uint8_t)arg);
   }
   void preInc(bool /*canAssign*/) { preIncDec(OpCode::ADD); }
   void preDec(bool /*canAssign*/) { preIncDec(OpCode::SUBTRACT); }

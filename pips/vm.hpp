@@ -507,6 +507,44 @@ struct VM {
         frameBase[slot] = peek(0);
         break;
       }
+      case OpCode::GET_OUTER: {
+        // find variable by going up the call stack
+        std::string name = AS_STRING(chunk->constants[(*ip++)]);
+        std::uint8_t slot = *ip++;
+        Value *base = nullptr;
+        for (int i = frameCount - 1; i >= 0; --i) {
+          if (frames[i].function && frames[i].function->name == name) {
+            base = (i == frameCount - 1) ? frameBase : frames[i + 1].slots;
+            break;
+          }
+        }
+        if (base == nullptr) {
+          runtimeError("Enclosing function '%s' not active on call stack.",
+                       name.c_str());
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!push(base[slot]))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::SET_OUTER: {
+        std::string name = AS_STRING(chunk->constants[(*ip++)]);
+        std::uint8_t slot = *ip++;
+        Value *base = nullptr;
+        for (int i = frameCount - 1; i >= 0; --i) {
+          if (frames[i].function && frames[i].function->name == name) {
+            base = (i == frameCount - 1) ? frameBase : frames[i + 1].slots;
+            break;
+          }
+        }
+        if (base == nullptr) {
+          runtimeError("Enclosing function '%s' not active on call stack.",
+                       name.c_str());
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        base[slot] = peek(0);
+        break;
+      }
       case OpCode::CONSTANT: {
         Value constant = chunk->constants[(*ip++)];
         if (!push(constant))

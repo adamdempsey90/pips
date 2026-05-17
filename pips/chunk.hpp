@@ -67,6 +67,8 @@ enum OpCode {
   SET_GLOBAL,
   SET_LOCAL,
   GET_LOCAL,
+  GET_OUTER,
+  SET_OUTER,
   JUMP_IF_FALSE,
   JUMP,
   LOOP,
@@ -238,6 +240,22 @@ struct Chunk {
       return Instruction<OpCode::GET_LOCAL>("OP_GET_LOCAL", i);
     case OpCode::SET_LOCAL:
       return Instruction<OpCode::SET_LOCAL>("OP_SET_LOCAL", i);
+    case OpCode::GET_OUTER: {
+      const auto name_const = code[i + 1];
+      const auto slot = code[i + 2];
+      printf("%-16s name=%d slot=%d '", "OP_GET_OUTER", name_const, slot);
+      printValue(constants[name_const]);
+      printf("'\n");
+      return i + 3;
+    }
+    case OpCode::SET_OUTER: {
+      const auto name_const = code[i + 1];
+      const auto slot = code[i + 2];
+      printf("%-16s name=%d slot=%d '", "OP_SET_OUTER", name_const, slot);
+      printValue(constants[name_const]);
+      printf("'\n");
+      return i + 3;
+    }
     case OpCode::JUMP:
       return jumpInstruction("OP_JUMP", 1, i);
     case OpCode::JUMP_IF_FALSE:
