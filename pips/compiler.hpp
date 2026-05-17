@@ -16,6 +16,7 @@
 
 #include "chunk.hpp"
 #include "function.hpp"
+#include "object.hpp"
 #include "scanner.hpp"
 #include "types.hpp"
 #include "utils.hpp"
@@ -123,8 +124,10 @@ struct Compiler {
   Parser parser;
   VM *pvm;
   CompilerState *current = nullptr;
-  // function table
   std::unordered_map<std::string, Function> *fnTable = nullptr;
+  std::unordered_map<std::string, ClassDef> *classTable = nullptr;
+  ClassDef *currentClass = nullptr;
+  bool inClassInit = false;
   char end_line = ';';
 
   // clang-format off
@@ -134,7 +137,7 @@ struct Compiler {
       Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 87> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 91> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -186,7 +189,7 @@ struct Compiler {
                                                         nullptr,             // NEWLINE
                                                         nullptr,             // RETURN
                                                         nullptr,             // SUPER
-                                                        nullptr,             // THIS
+                                                        &Compiler::thisExpr, // THIS
                                                         &Compiler::literal,  // TRUE
                                                         nullptr,             // VAR
                                                         nullptr,             // WHILE
@@ -219,15 +222,19 @@ struct Compiler {
                                                         nullptr,             // BAND_EQUAL
                                                         nullptr,             // LSHIFT_EQUAL
                                                         nullptr,             // RSHIFT_EQUAL
+                                                        &Compiler::setAttr,  // SETATTR
+                                                        &Compiler::getAttr,  // GETATTR
+                                                        &Compiler::str,      // STR
+                                                        &Compiler::newExpr,  // NEW
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 87> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 91> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
                                                        nullptr,           // COMMA
-                                                       nullptr,           // DOT
+                                                       &Compiler::dot,    // DOT
                                                        &Compiler::binary, // MINUS
                                                        &Compiler::binary, // PLUS
                                                        nullptr,           // SEMICOLON
@@ -307,15 +314,19 @@ struct Compiler {
                                                        nullptr,           // BAND_EQUAL
                                                        nullptr,           // LSHIFT_EQUAL
                                                        nullptr,           // RSHIFT_EQUAL
+                                                       nullptr,           // SETATTR
+                                                       nullptr,           // GETATTR
+                                                       nullptr,           // STR
+                                                       nullptr,           // NEW
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 87> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 91> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
                                         Precedence::NONE,       // COMMA
-                                        Precedence::NONE,       // DOT
+                                        Precedence::CALL,       // DOT
                                         Precedence::TERM,       // MINUS
                                         Precedence::TERM,       // PLUS
                                         Precedence::NONE,       // SEMICOLON
@@ -395,6 +406,10 @@ struct Compiler {
                                         Precedence::NONE,       // BAND_EQUAL
                                         Precedence::NONE,       // LSHIFT_EQUAL
                                         Precedence::NONE,       // RSHIFT_EQUAL
+                                        Precedence::NONE,       // SETATTR
+                                        Precedence::NONE,       // GETATTR
+                                        Precedence::NONE,       // STR
+                                        Precedence::NONE,       // NEW
                                         Precedence::NONE,       // ERROR
                                         Precedence::NONE};      // END
   // clang-format on
@@ -451,6 +466,13 @@ struct Compiler {
     const auto &[_f1, _f2, prec2_] = getRule(parser.current.type);
     Precedence prec = prec2_;
     while (Utils::to_underlying(precedence) <= Utils::to_underlying(prec)) {
+      // Inside "new C {...}" initializers, a DOT that begins on a new line
+      // belongs to the next ".field = expr" initializer, not to the current
+      // expression. Stop here so the init loop can pick it up.
+      if (inClassInit && parser.current.type == TokenType::DOT &&
+          parser.current.line > parser.previous.line) {
+        break;
+      }
       parser.advance();
       const auto &[_f1, infix, _prec] = getRule(parser.previous.type);
       (this->*infix)(canAssign);
@@ -512,9 +534,11 @@ struct Compiler {
     } else {
       emitByte(OpCode::NIL);
     }
-    if (end_line == ';')
+    if (end_line == ';' && parser.previous.type != TokenType::RIGHT_BRACE)
       parser.consume(TokenType::SEMICOLON,
                      "Expect ';' after variable declaration.");
+    else
+      (void)match(TokenType::SEMICOLON);
     defineVariable(global);
   }
   void varDeclaration() {
@@ -524,9 +548,11 @@ struct Compiler {
     } else {
       emitByte(OpCode::NIL);
     }
-    if (end_line == ';')
+    if (end_line == ';' && parser.previous.type != TokenType::RIGHT_BRACE)
       parser.consume(TokenType::SEMICOLON,
                      "Expect ';' after variable declaration.");
+    else
+      (void)match(TokenType::SEMICOLON);
     defineVariable(global);
   }
 
@@ -707,6 +733,39 @@ struct Compiler {
   }
   void variable(bool canAssign) {
     Token name = parser.previous;
+    if (currentClass && resolveLocal(current, &name) == -1) {
+      std::string nstr(name.start, name.length);
+      // Bare method call: name(...)
+      if (currentClass->methods.count(nstr) &&
+          check(TokenType::LEFT_PAREN)) {
+        parser.advance(); // consume '('
+        emitBytes(OpCode::GET_LOCAL, 0);
+        std::uint8_t mname = identifierConstant(&name);
+        std::uint8_t argc = argumentList();
+        emitByte(OpCode::CALL_METHOD);
+        emitByte(mname);
+        emitByte(argc);
+        return;
+      }
+      // Bare field reference: name, name = value
+      bool isField = false;
+      for (const auto &f : currentClass->fields) {
+        if (f == nstr) { isField = true; break; }
+      }
+      if (isField) {
+        emitBytes(OpCode::GET_LOCAL, 0);
+        std::uint8_t nc = identifierConstant(&name);
+        if (canAssign && match(TokenType::EQUAL)) {
+          expression();
+          emitByte(OpCode::SET_PROPERTY);
+          emitByte(nc);
+          return;
+        }
+        emitByte(OpCode::GET_PROPERTY);
+        emitByte(nc);
+        return;
+      }
+    }
     // look for name(...) as the sign for a function call
     if (check(TokenType::LEFT_PAREN) && resolveLocal(current, &name) == -1) {
       parser.advance(); // consume '('
@@ -719,6 +778,109 @@ struct Compiler {
     }
     namedVariable(name, canAssign);
   }
+
+  void thisExpr(bool /*canAssign*/) {
+    if (!currentClass) {
+      parser.error("'this' is only valid inside a method.");
+      return;
+    }
+    emitBytes(OpCode::GET_LOCAL, 0);
+  }
+
+  void dot(bool canAssign) {
+    parser.consume(TokenType::IDENTIFIER, "Expect property name after '.'.");
+    Token nameTok = parser.previous;
+    std::uint8_t nameConst = identifierConstant(&nameTok);
+    if (check(TokenType::LEFT_PAREN)) {
+      parser.advance(); // '('
+      std::uint8_t argc = argumentList();
+      emitByte(OpCode::CALL_METHOD);
+      emitByte(nameConst);
+      emitByte(argc);
+      return;
+    }
+    if (canAssign && match(TokenType::EQUAL)) {
+      expression();
+      emitByte(OpCode::SET_PROPERTY);
+      emitByte(nameConst);
+      return;
+    }
+    emitByte(OpCode::GET_PROPERTY);
+    emitByte(nameConst);
+  }
+
+  void newExpr(bool /*canAssign*/) {
+    parser.consume(TokenType::IDENTIFIER, "Expect class name after 'new'.");
+    Token classTok = parser.previous;
+    std::string className(classTok.start, classTok.length);
+    std::uint8_t classConst = identifierConstant(&classTok);
+
+    // Look up class for field-name validation.
+    ClassDef *cls = nullptr;
+    if (classTable) {
+      auto it = classTable->find(className);
+      if (it == classTable->end()) {
+        parser.error("Unknown class in 'new'.");
+      } else {
+        cls = &it->second;
+      }
+    }
+
+    parser.consume(TokenType::LEFT_BRACE,
+                   "Expect '{' after class name in 'new'.");
+
+    bool savedInit = inClassInit;
+    inClassInit = true;
+
+    // Allocate
+    emitByte(OpCode::NEW_INSTANCE);
+    emitByte(classConst);
+
+    // Default field initializers
+    emitByte(OpCode::DUP);
+    Value initName;
+    initName.type = ValueType::STRING;
+    StringToChar(std::string("__init_fields"), initName.as.str);
+    std::uint8_t initConst = makeConstant(initName);
+    emitByte(OpCode::CALL_METHOD);
+    emitByte(initConst);
+    emitByte(0);
+    emitByte(OpCode::POP);
+
+    // Brace-initializer block: { .field = expr; ... }
+    while (!check(TokenType::RIGHT_BRACE) && !check(TokenType::END) &&
+           !parser.hadError) {
+      parser.consume(TokenType::DOT,
+                     "Expect '.field = expr' initializer.");
+      parser.consume(TokenType::IDENTIFIER, "Expect field name after '.'.");
+      Token fieldTok = parser.previous;
+      std::string fieldName(fieldTok.start, fieldTok.length);
+
+      if (cls) {
+        bool found = false;
+        for (const auto &f : cls->fields) {
+          if (f == fieldName) { found = true; break; }
+        }
+        if (!found) parser.error("Unknown field in class initializer.");
+      }
+
+      parser.consume(TokenType::EQUAL, "Expect '=' after field name.");
+
+      std::uint8_t fieldConst = identifierConstant(&fieldTok);
+      emitByte(OpCode::DUP);          // keep instance on stack
+      expression();
+      emitByte(OpCode::SET_PROPERTY);
+      emitByte(fieldConst);
+      emitByte(OpCode::POP);          // discard value pushed by SET_PROPERTY
+
+      if (check(TokenType::SEMICOLON) || check(TokenType::COMMA))
+        parser.advance();
+    }
+    parser.consume(TokenType::RIGHT_BRACE,
+                   "Expect '}' after class initializers.");
+    inClassInit = savedInit;
+  }
+
   std::uint8_t argumentList() {
     std::uint8_t argc = 0;
     if (!check(TokenType::RIGHT_PAREN)) {
@@ -805,6 +967,26 @@ struct Compiler {
   void max(bool tmp_) {
     binary_consume();
     emitByte(OpCode::MAX);
+  }
+  void setAttr(bool tmp_) {
+    parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'setattr'.");
+    expression();
+    parser.consume(TokenType::COMMA, "Expect ',' between arguments to setattr.");
+    expression();
+    parser.consume(TokenType::COMMA, "Expect ',' between arguments to setattr.");
+    expression();
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after arguments to setattr.");
+    emitByte(OpCode::SET_ATTR);
+  }
+  void getAttr(bool tmp_) {
+    binary_consume();
+    emitByte(OpCode::GET_ATTR);
+  }
+  void str(bool tmp_) {
+    parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'str'.");
+    expression();
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after argument to str.");
+    emitByte(OpCode::STR);
   }
   void ceil(bool tmp_) {
     parsePrecedence(Precedence::UNARY);
@@ -1018,7 +1200,10 @@ struct Compiler {
   void expressionStatement() {
     expression();
     if (end_line == ';') {
-      parser.consume(TokenType::SEMICOLON, "Expect ';' after value.");
+      if (parser.previous.type != TokenType::RIGHT_BRACE)
+        parser.consume(TokenType::SEMICOLON, "Expect ';' after value.");
+      else
+        (void)match(TokenType::SEMICOLON);
     }
     emitByte(OpCode::POP);
   }
@@ -1246,8 +1431,158 @@ struct Compiler {
     parser.consume(TokenType::IDENTIFIER, "Expect function name.");
     function(FunctionType::FUNCTION);
   }
+
+  void compileMethod(ClassDef *cls, bool /*isCtor*/) {
+    // Caller already consumed the IDENTIFIER for the method name.
+    Token nameTok = parser.previous;
+    std::string methodName(nameTok.start, nameTok.length);
+    std::string qname = cls->name + "::" + methodName;
+    Function *fn = &(*fnTable)[qname];
+    fn->name = qname;
+    fn->arity = 0;
+    fn->chunk = Chunk();
+
+    CompilerState state;
+    state.function = fn;
+    state.type = FunctionType::FUNCTION;
+    state.enclosing = current;
+    state.localCount = 0;
+    state.scopeDepth = 0;
+    current = &state;
+
+    beginScope();
+    // Reserve slot 0 as the synthetic `this` local.
+    Local &thisLocal = current->locals[current->localCount++];
+    thisLocal.name.start = "this";
+    thisLocal.name.length = 4;
+    thisLocal.name.line = parser.previous.line;
+    thisLocal.depth = current->scopeDepth;
+
+    parser.consume(TokenType::LEFT_PAREN, "Expect '(' after method name.");
+    if (!check(TokenType::RIGHT_PAREN)) {
+      do {
+        current->function->arity++;
+        if (current->function->arity > 254) {
+          parser.error("Can't have more than 254 parameters.");
+        }
+        std::uint8_t constant = parseVariable("Expect parameter name.");
+        defineVariable(constant);
+      } while (match(TokenType::COMMA));
+    }
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after parameters.");
+    parser.consume(TokenType::LEFT_BRACE, "Expect '{' before method body.");
+    block();
+    emitReturn();
+#ifdef DEBUG_PRINT_CODE
+    if (!parser.hadError)
+      currentChunk()->disassemble(fn->name.c_str());
+#endif
+    current = state.enclosing;
+  }
+
+  void classDeclaration() {
+    parser.consume(TokenType::IDENTIFIER, "Expect class name.");
+    Token classNameTok = parser.previous;
+    std::string className(classNameTok.start, classNameTok.length);
+
+    if (current->type != FunctionType::SCRIPT) {
+      parser.error("Classes can only be declared at script scope.");
+      return;
+    }
+    if (!classTable) {
+      parser.error("No class table available.");
+      return;
+    }
+
+    ClassDef &cls = (*classTable)[className];
+    cls.name = className;
+    cls.fields.clear();
+    cls.methods.clear();
+    cls.hasCtor = false;
+
+    // Synthesize the __init_fields function for default-value initialization.
+    std::string initQname = className + "::__init_fields";
+    Function *initFn = &(*fnTable)[initQname];
+    initFn->name = initQname;
+    initFn->arity = 0;
+    initFn->chunk = Chunk();
+
+    CompilerState initState;
+    initState.function = initFn;
+    initState.type = FunctionType::FUNCTION;
+    initState.enclosing = current;
+    initState.localCount = 0;
+    initState.scopeDepth = 1;
+    // Slot 0 of __init_fields is `this`.
+    initState.locals[0].name.start = "this";
+    initState.locals[0].name.length = 4;
+    initState.locals[0].name.line = parser.previous.line;
+    initState.locals[0].depth = 1;
+    initState.localCount = 1;
+
+    CompilerState *outerState = current;
+    ClassDef *savedClass = currentClass;
+    currentClass = &cls;
+
+    parser.consume(TokenType::LEFT_BRACE, "Expect '{' before class body.");
+
+    bool seenMethod = false;
+    while (!check(TokenType::RIGHT_BRACE) && !check(TokenType::END) &&
+           !parser.hadError) {
+      if (match(TokenType::VAR)) {
+        if (seenMethod) {
+          parser.error("Field declarations must come before method "
+                       "declarations in a class body.");
+          break;
+        }
+        parser.consume(TokenType::IDENTIFIER, "Expect field name.");
+        Token fieldTok = parser.previous;
+        std::string fieldName(fieldTok.start, fieldTok.length);
+        cls.fields.push_back(fieldName);
+
+        if (match(TokenType::EQUAL)) {
+          // Emit field-default code into __init_fields:
+          current = &initState;
+          std::uint8_t nameConst = identifierConstant(&fieldTok);
+          emitBytes(OpCode::GET_LOCAL, 0);
+          expression();
+          emitByte(OpCode::SET_PROPERTY);
+          emitByte(nameConst);
+          emitByte(OpCode::POP);
+          current = outerState;
+        }
+        // Optional terminator inside class body.
+        if (check(TokenType::SEMICOLON))
+          parser.advance();
+      } else if (match(TokenType::FUN)) {
+        seenMethod = true;
+        parser.consume(TokenType::IDENTIFIER, "Expect method name.");
+        Token methodTok = parser.previous;
+        std::string methodName(methodTok.start, methodTok.length);
+        if (methodName == className) {
+          parser.error("Constructors are not supported; use 'new C { .field = expr }' instead.");
+        }
+        cls.methods.insert(methodName);
+        compileMethod(&cls, false);
+      } else {
+        parser.errorAtCurrent("Expect 'var' or 'fn' in class body.");
+        parser.advance();
+      }
+    }
+    parser.consume(TokenType::RIGHT_BRACE, "Expect '}' after class body.");
+
+    // Close __init_fields with `return nil`.
+    current = &initState;
+    emitByte(OpCode::NIL);
+    emitByte(OpCode::RETURN);
+    current = outerState;
+
+    currentClass = savedClass;
+  }
   void declaration() {
-    if (match(TokenType::FUN)) {
+    if (match(TokenType::CLASS)) {
+      classDeclaration();
+    } else if (match(TokenType::FUN)) {
       funDeclaration();
     } else if (match(TokenType::VAR)) {
       varDeclaration();
@@ -1266,8 +1601,10 @@ struct Compiler {
       synchronize();
   }
   bool compile(Function *fn,
-               std::unordered_map<std::string, Function> *fns) {
+               std::unordered_map<std::string, Function> *fns,
+               std::unordered_map<std::string, ClassDef> *classes = nullptr) {
     fnTable = fns;
+    classTable = classes;
     CompilerState rootState;
     rootState.function = fn;
     rootState.type = FunctionType::SCRIPT;

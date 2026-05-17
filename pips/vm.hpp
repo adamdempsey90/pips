@@ -12,6 +12,7 @@
 
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <stdarg.h>
 #include <string>
 #include <unordered_map>
@@ -21,6 +22,7 @@
 #include "compiler.hpp"
 #include "function.hpp"
 #include "math.hpp"
+#include "object.hpp"
 #include "readline.hpp"
 #include "scanner.hpp"
 #include "types.hpp"
@@ -115,6 +117,11 @@ struct VM {
 
   // Table of functions
   std::unordered_map<std::string, Function> functions;
+
+  // Table of classes
+  std::unordered_map<std::string, ClassDef> classes;
+  // Owning storage for runtime instance objects.
+  std::vector<std::unique_ptr<Instance>> instances;
 
   CallFrame frames[FRAMES_MAX];
   int frameCount = 0;
@@ -457,6 +464,195 @@ struct VM {
         frameBase = stackTop - argc;
         break;
       }
+      case OpCode::DUP: {
+      // Duplicate the top value on the stack
+      // This is used for method call receivers, so the receiver stays on the stack
+        if (!push(peek(0)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::NEW_INSTANCE: {
+        std::string className = AS_STRING(chunk->constants[(*ip++)]);
+        auto cit = classes.find(className);
+        if (cit == classes.end()) {
+          runtimeError("Undefined class '%s'.", className.c_str());
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        instances.push_back(std::make_unique<Instance>());
+        Instance *inst = instances.back().get();
+        inst->classDef = &cit->second;
+        // Initialize declared fields to nil.
+        for (const auto &f : inst->classDef->fields) {
+          inst->fields[f] = NIL_VAL;
+        }
+        if (!push(INSTANCE_VAL(inst)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::GET_PROPERTY: {
+        std::string name = AS_STRING(chunk->constants[(*ip++)]);
+        Value recv = pop();
+        if (!IS_INSTANCE(recv)) {
+          runtimeError("Only instances have properties.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        Instance *inst = AS_INSTANCE(recv);
+        bool declared = false;
+        for (const auto &f : inst->classDef->fields) {
+          if (f == name) { declared = true; break; }
+        }
+        if (!declared) {
+          runtimeError("Class '%s' has no field '%s'.",
+                       inst->classDef->name.c_str(), name.c_str());
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        auto fit = inst->fields.find(name);
+        if (fit == inst->fields.end()) {
+          if (!push(NIL_VAL))
+            return InterpretResult::RUNTIME_ERROR;
+        } else {
+          if (!push(fit->second))
+            return InterpretResult::RUNTIME_ERROR;
+        }
+        break;
+      }
+      case OpCode::SET_PROPERTY: {
+        std::string name = AS_STRING(chunk->constants[(*ip++)]);
+        Value val = pop();
+        Value recv = pop();
+        if (!IS_INSTANCE(recv)) {
+          runtimeError("Only instances have properties.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        Instance *inst = AS_INSTANCE(recv);
+        bool declared = false;
+        for (const auto &f : inst->classDef->fields) {
+          if (f == name) { declared = true; break; }
+        }
+        if (!declared) {
+          runtimeError("Class '%s' has no field '%s'.",
+                       inst->classDef->name.c_str(), name.c_str());
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        inst->fields[name] = val;
+        if (!push(val))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::GET_ATTR: {
+        Value nameVal = pop();
+        Value recv = pop();
+        if (!IS_INSTANCE(recv)) {
+          runtimeError("getattr: first argument must be an instance.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!IS_STRING(nameVal)) {
+          runtimeError("getattr: second argument must be a string.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        Instance *inst = AS_INSTANCE(recv);
+        std::string name = AS_STRING(nameVal);
+        auto fit = inst->fields.find(name);
+        if (fit == inst->fields.end()) {
+          runtimeError("getattr: instance of class '%s' has no attribute '%s'.",
+                       inst->classDef->name.c_str(), name.c_str());
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!push(fit->second))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::SET_ATTR: {
+        Value val = pop();
+        Value nameVal = pop();
+        Value recv = pop();
+        if (!IS_INSTANCE(recv)) {
+          runtimeError("setattr: first argument must be an instance.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!IS_STRING(nameVal)) {
+          runtimeError("setattr: second argument must be a string.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        Instance *inst = AS_INSTANCE(recv);
+        std::string name = AS_STRING(nameVal);
+        bool declared = false;
+        for (const auto &f : inst->classDef->fields) {
+          if (f == name) { declared = true; break; }
+        }
+        if (!declared) {
+          inst->classDef->fields.push_back(name);
+        }
+        inst->fields[name] = val;
+        if (!push(val))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::STR: {
+        Value v = pop();
+        std::string s;
+        switch (v.type) {
+        case ValueType::BOOL:
+          s = AS_BOOL(v) ? "true" : "false";
+          break;
+        case ValueType::NUMBER: {
+          char buf[64];
+          std::snprintf(buf, sizeof(buf), "%.16lg",
+                        static_cast<double>(AS_NUMBER(v)));
+          s = buf;
+          break;
+        }
+        case ValueType::STRING:
+          s = AS_STRING(v);
+          break;
+        case ValueType::NIL:
+          s = "nil";
+          break;
+        default:
+          runtimeError("str: unsupported value type.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!push(STRING_VAL(s)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::CALL_METHOD: {
+        std::string mname = AS_STRING(chunk->constants[(*ip++)]);
+        std::uint8_t argc = *ip++;
+        // Receiver sits just below the args.
+        Value recv = stackTop[-1 - argc];
+        if (!IS_INSTANCE(recv)) {
+          runtimeError("Only instances have methods.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        Instance *inst = AS_INSTANCE(recv);
+        std::string qname = inst->classDef->name + "::" + mname;
+        auto it = functions.find(qname);
+        if (it == functions.end()) {
+          runtimeError("Undefined method '%s' on class '%s'.",
+                       mname.c_str(), inst->classDef->name.c_str());
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        Function &fn = it->second;
+        if (argc != fn.arity) {
+          runtimeError("Expected %d arguments to method '%s' but got %d.",
+                       fn.arity, qname.c_str(), argc);
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (frameCount == FRAMES_MAX) {
+          runtimeError("Frame stack overflow.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        frames[frameCount].function = &fn;
+        frames[frameCount].chunk = chunk;
+        frames[frameCount].ip = ip;
+        frames[frameCount].slots = frameBase;
+        frameCount++;
+        chunk = &fn.chunk;
+        ip = chunk->code.data();
+        frameBase = stackTop - argc - 1;
+        break;
+      }
       case OpCode::POP:
         pop();
         break;
@@ -688,7 +884,7 @@ struct VM {
     Function script;
     script.name = "__main__";
     Compiler compiler(this, source, end_line);
-    if (!compiler.compile(&script, &functions)) {
+    if (!compiler.compile(&script, &functions, &classes)) {
       return InterpretResult::COMPILE_ERROR;
     }
 
@@ -705,7 +901,7 @@ struct VM {
     Function script;
     script.name = "__main__";
     Compiler compiler(this, source, end_line);
-    if (!compiler.compile(&script, &functions)) {
+    if (!compiler.compile(&script, &functions, &classes)) {
       return InterpretResult::COMPILE_ERROR;
     }
 

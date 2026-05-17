@@ -17,17 +17,20 @@ namespace pips {
 #define NIL_VAL (Value())
 #define NUMBER_VAL(value) (Value(value))
 #define STRING_VAL(value) (Value(value))
+#define INSTANCE_VAL(ptr) (Value(ptr))
 
 #define IS_BOOL(value) ((value).type == ValueType::BOOL)
 #define IS_NIL(value) ((value).type == ValueType::NIL)
 #define IS_NUMBER(value) ((value).type == ValueType::NUMBER)
 #define IS_STRING(value) ((value).type == ValueType::STRING)
+#define IS_INSTANCE(value) ((value).type == ValueType::INSTANCE)
 #define IS_NUMERIC(value)                                                      \
   ((value).type == ValueType::NUMBER || (value).type == ValueType::BOOL)
 
 #define AS_BOOL(value) ((value).as.boolean)
 #define AS_NUMBER(value) ((value).as.number)
 #define AS_STRING(value) ((value).as.str)
+#define AS_INSTANCE(value) ((value).as.instance)
 
 extern void printObject(Value val);
 
@@ -66,6 +69,9 @@ inline void printValue(const Value &val) {
   case ValueType::STRING:
     printf("%s", val.as.str);
     break;
+  case ValueType::INSTANCE:
+    printf("<instance %p>", static_cast<const void *>(AS_INSTANCE(val)));
+    break;
   }
 }
 
@@ -87,6 +93,8 @@ inline bool valuesEqual(Value a, Value b) {
   case ValueType::STRING: {
     return stringCompare(a, b);
   }
+  case ValueType::INSTANCE:
+    return AS_INSTANCE(a) == AS_INSTANCE(b);
   default:
     return false;
   }
