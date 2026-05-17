@@ -112,6 +112,10 @@ enum class TokenType : unsigned int {
   LSHIFT_EQUAL,
   RSHIFT_EQUAL,
 
+  SETATTR,
+  GETATTR,
+  STR,
+  NEW,
   ERROR,
   END
 };
@@ -295,6 +299,8 @@ struct Scanner {
       }
       break;
     }
+    case 'g':
+      return checkKeyword(1, 6, "etattr", TokenType::GETATTR);
     case 'i':
       return checkKeyword(1, 1, "f", TokenType::IF);
     case 'l': {
@@ -330,6 +336,8 @@ struct Scanner {
           return checkKeyword(2, 1, "l", TokenType::NIL);
         case 'o':
           return checkKeyword(2, 1, "t", TokenType::BANG);
+        case 'e':
+          return checkKeyword(2, 1, "w", TokenType::NEW);
         }
       }
       break;
@@ -385,6 +393,10 @@ struct Scanner {
         }
         case 'q':
           return checkKeyword(2, 2, "rt", TokenType::SQRT);
+        case 'e':
+          return checkKeyword(2, 5, "tattr", TokenType::SETATTR);
+        case 't':
+          return checkKeyword(2, 1, "r", TokenType::STR);
         }
       }
       break;
@@ -418,13 +430,6 @@ struct Scanner {
     while (std::isalpha(peek()) || std::isdigit(peek()) || peek() == '_' ||
            peek() == '[' || peek() == ']')
       advance();
-
-    if ((peek() == '.') &&
-        ((std::isalpha(peekNext()) || std::isdigit(peekNext()) ||
-          peekNext() == '_' || peekNext() == '[' || peekNext() == ']'))) {
-      advance(); // consume '.'
-      identifier();
-    }
 
     auto itype = identifierType();
     auto tok = Token(itype, start, current, line);

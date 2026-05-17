@@ -73,6 +73,14 @@ enum OpCode {
   JUMP,
   LOOP,
   CALL,
+  DUP,
+  NEW_INSTANCE,
+  GET_PROPERTY,
+  SET_PROPERTY,
+  GET_ATTR,
+  SET_ATTR,
+  STR,
+  CALL_METHOD,
   RETURN
 };
 
@@ -266,6 +274,39 @@ struct Chunk {
       const auto name_const = code[i + 1];
       const auto argc = code[i + 2];
       printf("%-16s name=%d argc=%d '", "OP_CALL", name_const, argc);
+      printValue(constants[name_const]);
+      printf("'\n");
+      return i + 3;
+    }
+    case OpCode::DUP:
+      printf("OP_DUP\n");
+      return i + 1;
+    case OpCode::NEW_INSTANCE: {
+      const auto name_const = code[i + 1];
+      const auto argc = code[i + 2];
+      printf("%-16s name=%d argc=%d '", "OP_NEW_INSTANCE", name_const, argc);
+      printValue(constants[name_const]);
+      printf("'\n");
+      return i + 3;
+    }
+    case OpCode::GET_PROPERTY: {
+      const auto name_const = code[i + 1];
+      printf("%-16s name=%d '", "OP_GET_PROPERTY", name_const);
+      printValue(constants[name_const]);
+      printf("'\n");
+      return i + 2;
+    }
+    case OpCode::SET_PROPERTY: {
+      const auto name_const = code[i + 1];
+      printf("%-16s name=%d '", "OP_SET_PROPERTY", name_const);
+      printValue(constants[name_const]);
+      printf("'\n");
+      return i + 2;
+    }
+    case OpCode::CALL_METHOD: {
+      const auto name_const = code[i + 1];
+      const auto argc = code[i + 2];
+      printf("%-16s name=%d argc=%d '", "OP_CALL_METHOD", name_const, argc);
       printValue(constants[name_const]);
       printf("'\n");
       return i + 3;

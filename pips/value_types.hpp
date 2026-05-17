@@ -19,7 +19,9 @@ inline void StringToChar(std::string str, char *buff) {
   buff[len] = '\0';
 }
 
-enum class ValueType { BOOL, NIL, STRING, NUMBER };
+enum class ValueType { BOOL, NIL, STRING, NUMBER, INSTANCE };
+
+struct Instance; // forward declaration; defined in object.hpp
 
 struct Value {
   ValueType type;
@@ -27,6 +29,7 @@ struct Value {
     bool boolean;
     Real number;
     char str[STRING_MAX];
+    Instance *instance;
   } as;
 
   Value() {
@@ -40,6 +43,11 @@ struct Value {
     } else if constexpr (std::is_same_v<T, bool>) {
       type = ValueType::BOOL;
       as.boolean = v;
+    } else if constexpr (std::is_pointer_v<T> &&
+                         std::is_same_v<std::remove_cv_t<std::remove_pointer_t<T>>,
+                                        Instance>) {
+      type = ValueType::INSTANCE;
+      as.instance = v;
     } else if constexpr (std::is_arithmetic_v<T>) {
       type = ValueType::NUMBER;
       as.number = static_cast<Real>(v);
@@ -63,6 +71,9 @@ struct Value {
     case ValueType::NUMBER:
       as.number = other.as.number;
       break;
+    case ValueType::INSTANCE:
+      as.instance = other.as.instance;
+      break;
     }
   }
 
@@ -81,6 +92,9 @@ struct Value {
         break;
       case ValueType::NUMBER:
         as.number = other.as.number;
+        break;
+      case ValueType::INSTANCE:
+        as.instance = other.as.instance;
         break;
       }
     }
