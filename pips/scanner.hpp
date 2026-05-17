@@ -67,6 +67,7 @@ enum class TokenType : unsigned int {
   GLOBALS,
   LOCALS,
   STACK,
+  LISTFUNC,
   NEWLINE,
   RETURN,
   SUPER,
@@ -273,8 +274,8 @@ struct Scanner {
           return checkKeyword(2, 3, "lse", TokenType::FALSE);
         case 'o':
           return checkKeyword(2, 1, "r", TokenType::FOR);
-        case 'u':
-          return checkKeyword(2, 1, "n", TokenType::FUN);
+        case 'n':
+          return TokenType::FUN;
         case 'l':
           return checkKeyword(2, 3, "oor", TokenType::FLOOR);
         }
@@ -333,10 +334,13 @@ struct Scanner {
             }
           }
           break;
+        case 'f':
+          return checkKeyword(3, 6, "uncs__", TokenType::LISTFUNC);
         case 'g':
           return checkKeyword(3, 8, "lobals__", TokenType::GLOBALS);
         case 's':
           return checkKeyword(3, 6, "tack__", TokenType::STACK);
+
         }
       }
       break;

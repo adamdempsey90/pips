@@ -12,8 +12,10 @@
 #include <array>
 #include <cmath>
 #include <tuple>
+#include <unordered_map>
 
 #include "chunk.hpp"
+#include "function.hpp"
 #include "scanner.hpp"
 #include "types.hpp"
 #include "utils.hpp"
@@ -102,19 +104,28 @@ struct Local {
   int depth;
 };
 
+enum class FunctionType { SCRIPT, FUNCTION };
+
+// Per-function compilation context
+struct CompilerState {
+  Function *function = nullptr;
+  FunctionType type = FunctionType::SCRIPT;
+  Local locals[UINT8_MAX + 1];
+  int localCount = 0;
+  int scopeDepth = 0;
+  CompilerState *enclosing = nullptr;
+};
+
 struct Compiler {
 
   // scanner maybe needs to be a unique_ptr?
   Scanner scanner;
   Parser parser;
-  Chunk *compilingChunk;
   VM *pvm;
-  Compiler *current;
+  CompilerState *current = nullptr;
+  // function table
+  std::unordered_map<std::string, Function> *fnTable = nullptr;
   char end_line = ';';
-
-  Local locals[UINT8_MAX + 1];
-  int localCount;
-  int scopeDepth;
 
   // clang-format off
   std::array<Precedence, 14> prec_array{
@@ -123,7 +134,7 @@ struct Compiler {
       Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 75> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 76> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -171,6 +182,7 @@ struct Compiler {
                                                         nullptr,             // GLOBALS
                                                         nullptr,             // LOCALS
                                                         nullptr,             // STACK
+                                                        nullptr,             // LIST-FUNC
                                                         nullptr,             // NEWLINE
                                                         nullptr,             // RETURN
                                                         nullptr,             // SUPER
@@ -199,7 +211,7 @@ struct Compiler {
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 75> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 76> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -247,6 +259,7 @@ struct Compiler {
                                                        nullptr,           // GLOBALS
                                                        nullptr,           // LOCALS
                                                        nullptr,           // STACK
+                                                       nullptr,           // LISTFUNC
                                                        nullptr,           // NEWLINE
                                                        nullptr,           // RETURN
                                                        nullptr,           // SUPER
@@ -275,7 +288,7 @@ struct Compiler {
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 75> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 76> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -323,6 +336,7 @@ struct Compiler {
                                         Precedence::NONE,       // GLOBALS
                                         Precedence::NONE,       // LOCALS
                                         Precedence::NONE,       // STACK
+                                        Precedence::NONE,       // LISTFUNC
                                         Precedence::NONE,       // NEWLINE  
                                         Precedence::NONE,       // RETURN
                                         Precedence::NONE,       // SUPER
@@ -353,23 +367,18 @@ struct Compiler {
   // clang-format on
   Compiler() = default;
   Compiler(VM *vm_, char end_line = '\n')
-      : pvm(vm_), compilingChunk(nullptr), localCount(0), scopeDepth(0),
-        parser(nullptr), end_line(end_line) {};
+      : pvm(vm_), parser(nullptr), end_line(end_line) {};
 
   Compiler(VM *vm_, const char *source, char end_line = '\n')
-      : scanner(source), parser(&scanner), pvm(vm_), compilingChunk(nullptr),
-        end_line(end_line) {
-    localCount = 0;
-    scopeDepth = 0;
-  }
+      : scanner(source), parser(&scanner), pvm(vm_), end_line(end_line) {}
   ~Compiler() = default;
 
   void init(const char *source) {
     scanner.init(source);
     parser.init(&scanner);
   }
-  void set_current(Compiler *curr) { current = curr; }
-  Chunk *currentChunk() { return compilingChunk; }
+  void set_current(CompilerState *curr) { current = curr; }
+  Chunk *currentChunk() { return &current->function->chunk; }
 
   void emitByte(std::uint8_t byte) {
     currentChunk()->write(byte, parser.previous.line);
@@ -386,7 +395,11 @@ struct Compiler {
     }
     return static_cast<std::uint8_t>(constant);
   }
-  void emitReturn() { emitByte(OpCode::RETURN); }
+  void emitReturn() {
+    // Default return value is nil.
+    emitByte(OpCode::NIL);
+    emitByte(OpCode::RETURN);
+  }
   void emitConstant(Value val) {
     emitBytes(OpCode::CONSTANT, makeConstant(val));
   }
@@ -506,7 +519,7 @@ struct Compiler {
     }
     emitBytes(OpCode::DEFINE_GLOBAL, global);
   }
-  int resolveLocal(Compiler *comp, Token *name) {
+  int resolveLocal(CompilerState *comp, Token *name) {
     for (int i = comp->localCount - 1; i >= 0; i--) {
       Local *local = &comp->locals[i];
       if (identifiersEqual(name, &local->name)) {
@@ -552,7 +565,34 @@ struct Compiler {
     parsePrecedence(Precedence::OR);
     patchJump(endJump);
   }
-  void variable(bool canAssign) { namedVariable(parser.previous, canAssign); }
+  void variable(bool canAssign) {
+    Token name = parser.previous;
+    // look for name(...) as the sign for a function call
+    if (check(TokenType::LEFT_PAREN) && resolveLocal(current, &name) == -1) {
+      parser.advance(); // consume '('
+      std::uint8_t nameConst = identifierConstant(&name);
+      std::uint8_t argc = argumentList();
+      emitByte(OpCode::CALL);
+      emitByte(nameConst);
+      emitByte(argc);
+      return;
+    }
+    namedVariable(name, canAssign);
+  }
+  std::uint8_t argumentList() {
+    std::uint8_t argc = 0;
+    if (!check(TokenType::RIGHT_PAREN)) {
+      do {
+        expression();
+        if (argc == 255) {
+          parser.error("Can't have more than 255 arguments.");
+        }
+        argc++;
+      } while (match(TokenType::COMMA));
+    }
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after arguments.");
+    return argc;
+  }
   void number(bool tmp_) {
     Real value = static_cast<Real>(std::strtod(parser.previous.start, NULL));
     emitConstant(NUMBER_VAL(value));
@@ -789,6 +829,7 @@ struct Compiler {
       case TokenType::GLOBALS:
       case TokenType::LOCALS:
       case TokenType::STACK:
+      case TokenType::LISTFUNC:
       case TokenType::RETURN:
         return;
       default:; // Do nothing
@@ -814,6 +855,11 @@ struct Compiler {
   }
   void stackStatement() {
     emitByte(OpCode::LIST_STACK);
+    if (end_line == ';')
+      parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
+  }
+  void listfuncStatement() {
+    emitByte(OpCode::LIST_FUNC);
     if (end_line == ';')
       parser.consume(TokenType::SEMICOLON, "Expect ';' after statement.");
   }
@@ -979,6 +1025,8 @@ struct Compiler {
       localsStatement();
     } else if (match(TokenType::STACK)) {
       stackStatement();
+    } else if (match(TokenType::LISTFUNC)) {
+      listfuncStatement();
     } else if (match(TokenType::LEFT_BRACE)) {
       beginScope();
       block();
@@ -989,14 +1037,76 @@ struct Compiler {
       whileStatement();
     } else if (match(TokenType::FOR)) {
       forStatement();
+    } else if (match(TokenType::RETURN)) {
+      returnStatement();
     } else {
       expressionStatement();
     }
   }
+  void returnStatement() {
+    if (current->type == FunctionType::SCRIPT) {
+      parser.error("Can't return from top-level code.");
+    }
+    if (check(TokenType::SEMICOLON) ||
+        (end_line != ';' && check(TokenType::END))) {
+      emitReturn();
+    } else {
+      expression();
+      if (end_line == ';')
+        parser.consume(TokenType::SEMICOLON, "Expect ';' after return value.");
+      emitByte(OpCode::RETURN);
+      return;
+    }
+    if (end_line == ';')
+      parser.consume(TokenType::SEMICOLON, "Expect ';' after return.");
+  }
+
+  void function(FunctionType type) {
+    Token nameTok = parser.previous;
+    std::string fnName(nameTok.start, nameTok.length);
+    Function *fn = &(*fnTable)[fnName];
+    fn->name = fnName;
+    fn->arity = 0;
+    fn->chunk = Chunk();
+
+    CompilerState state;
+    state.function = fn;
+    state.type = type;
+    state.enclosing = current;
+    state.localCount = 0;
+    state.scopeDepth = 0;
+    current = &state;
+
+    beginScope();
+    parser.consume(TokenType::LEFT_PAREN, "Expect '(' after function name.");
+    if (!check(TokenType::RIGHT_PAREN)) {
+      do {
+        current->function->arity++;
+        if (current->function->arity > 255) {
+          parser.error("Can't have more than 255 parameters.");
+        }
+        std::uint8_t constant = parseVariable("Expect parameter name.");
+        defineVariable(constant);
+      } while (match(TokenType::COMMA));
+    }
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after parameters.");
+    parser.consume(TokenType::LEFT_BRACE, "Expect '{' before function body.");
+    block();
+    emitReturn();
+#ifdef DEBUG_PRINT_CODE
+    if (!parser.hadError)
+      currentChunk()->disassemble(fn->name.c_str());
+#endif
+    current = state.enclosing;
+  }
+  void funDeclaration() {
+    parser.consume(TokenType::IDENTIFIER, "Expect function name.");
+    function(FunctionType::FUNCTION);
+  }
   void declaration() {
-    // var = 2;
-    // check if var is defined
-    if (match(TokenType::VAR)) {
+    if (match(TokenType::FUN)) {
+      funDeclaration();
+    } else if (match(TokenType::VAR)) {
       varDeclaration();
     }
 #ifdef NO_VAR_DECL
@@ -1012,15 +1122,21 @@ struct Compiler {
     if (parser.panicMode)
       synchronize();
   }
-  bool compile(Chunk *chunk) {
-    compilingChunk = chunk;
+  bool compile(Function *fn,
+               std::unordered_map<std::string, Function> *fns) {
+    fnTable = fns;
+    CompilerState rootState;
+    rootState.function = fn;
+    rootState.type = FunctionType::SCRIPT;
+    rootState.enclosing = nullptr;
+    current = &rootState;
+
     parser.advance();
     while (!match(TokenType::END)) {
       declaration();
     }
-    // expression();
-    // parser.consume(TokenType::END, "Expect end of expression.");
     endCompiler();
+    current = rootState.enclosing;
     return !parser.hadError;
   }
 };

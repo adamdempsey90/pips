@@ -59,6 +59,7 @@ enum OpCode {
   LIST_GLOBALS,
   LIST_LOCALS,
   LIST_STACK,
+  LIST_FUNC,
   NEWLINE,
   POP,
   DEFINE_GLOBAL,
@@ -69,6 +70,7 @@ enum OpCode {
   JUMP_IF_FALSE,
   JUMP,
   LOOP,
+  CALL,
   RETURN
 };
 
@@ -220,6 +222,8 @@ struct Chunk {
       return Instruction<OpCode::LIST_LOCALS>("OP_LIST_LOCALS", i);
     case OpCode::LIST_STACK:
       return Instruction<OpCode::LIST_STACK>("OP_LIST_STACK", i);
+    case OpCode::LIST_FUNC:
+      return Instruction<OpCode::LIST_FUNC>("OP_LIST_FUNC", i);
     case OpCode::NEWLINE:
       return Instruction<OpCode::RETURN>("OP_NEWLINE", i);
     case OpCode::POP:
@@ -240,6 +244,14 @@ struct Chunk {
       return jumpInstruction("OP_JUMP_IF_FALSE", 1, i);
     case OpCode::LOOP:
       return jumpInstruction("OP_LOOP", -1, i);
+    case OpCode::CALL: {
+      const auto name_const = code[i + 1];
+      const auto argc = code[i + 2];
+      printf("%-16s name=%d argc=%d '", "OP_CALL", name_const, argc);
+      printValue(constants[name_const]);
+      printf("'\n");
+      return i + 3;
+    }
     default:
       printf("Unknown opcode ??\n");
       return i + 1;
