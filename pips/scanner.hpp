@@ -99,6 +99,19 @@ enum class TokenType : unsigned int {
   MIN,
   MAX,
 
+  // compound assignment operators
+  PLUS_PLUS,
+  MINUS_MINUS,
+  PLUS_EQUAL,
+  MINUS_EQUAL,
+  STAR_EQUAL,
+  SLASH_EQUAL,
+  MOD_EQUAL,
+  BOR_EQUAL,
+  BAND_EQUAL,
+  LSHIFT_EQUAL,
+  RSHIFT_EQUAL,
+
   ERROR,
   END
 };
@@ -471,10 +484,20 @@ struct Scanner {
     case '.':
       return Token(TokenType::DOT, start, current, line);
     case '-':
+      if (match('-'))
+        return Token(TokenType::MINUS_MINUS, start, current, line);
+      if (match('='))
+        return Token(TokenType::MINUS_EQUAL, start, current, line);
       return Token(TokenType::MINUS, start, current, line);
     case '+':
+      if (match('+'))
+        return Token(TokenType::PLUS_PLUS, start, current, line);
+      if (match('='))
+        return Token(TokenType::PLUS_EQUAL, start, current, line);
       return Token(TokenType::PLUS, start, current, line);
     case '%':
+      if (match('='))
+        return Token(TokenType::MOD_EQUAL, start, current, line);
       return Token(TokenType::MOD, start, current, line);
     case '?':
       return Token(TokenType::QUESTION, start, current, line);
@@ -485,15 +508,25 @@ struct Scanner {
     case '~':
       return Token(TokenType::BNOT, start, current, line);
     case '|':
+      if (match('='))
+        return Token(TokenType::BOR_EQUAL, start, current, line);
       return Token(TokenType::BOR, start, current, line);
     case '&':
+      if (match('='))
+        return Token(TokenType::BAND_EQUAL, start, current, line);
       return Token(TokenType::BAND, start, current, line);
     case '*':
-      return Token(match('*') ? TokenType::STAR_STAR : TokenType::STAR, start,
-                   current, line);
+      if (match('*'))
+        return Token(TokenType::STAR_STAR, start, current, line);
+      if (match('='))
+        return Token(TokenType::STAR_EQUAL, start, current, line);
+      return Token(TokenType::STAR, start, current, line);
     case '/':
-      return Token(match('/') ? TokenType::SLASH_SLASH : TokenType::SLASH,
-                   start, current, line);
+      if (match('/'))
+        return Token(TokenType::SLASH_SLASH, start, current, line);
+      if (match('='))
+        return Token(TokenType::SLASH_EQUAL, start, current, line);
+      return Token(TokenType::SLASH, start, current, line);
     case '!':
       return Token(match('=') ? TokenType::BANG_EQUAL : TokenType::BANG, start,
                    current, line);
@@ -504,6 +537,8 @@ struct Scanner {
       if (match('=')) {
         return Token(TokenType::LESS_EQUAL, start, current, line);
       } else if (match('<')) {
+        if (match('='))
+          return Token(TokenType::LSHIFT_EQUAL, start, current, line);
         return Token(TokenType::LSHIFT, start, current, line);
       } else {
         return Token(TokenType::LESS, start, current, line);
@@ -512,6 +547,8 @@ struct Scanner {
       if (match('=')) {
         return Token(TokenType::GREATER_EQUAL, start, current, line);
       } else if (match('>')) {
+        if (match('='))
+          return Token(TokenType::RSHIFT_EQUAL, start, current, line);
         return Token(TokenType::RSHIFT, start, current, line);
       } else {
         return Token(TokenType::GREATER, start, current, line);

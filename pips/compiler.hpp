@@ -134,7 +134,7 @@ struct Compiler {
       Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 76> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 87> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -208,10 +208,21 @@ struct Compiler {
                                                         &Compiler::atan2,    // ATAN2
                                                         &Compiler::min,      // MIN
                                                         &Compiler::max,      // MAX
+                                                        &Compiler::preInc,   // PLUS_PLUS
+                                                        &Compiler::preDec,   // MINUS_MINUS
+                                                        nullptr,             // PLUS_EQUAL
+                                                        nullptr,             // MINUS_EQUAL
+                                                        nullptr,             // STAR_EQUAL
+                                                        nullptr,             // SLASH_EQUAL
+                                                        nullptr,             // MOD_EQUAL
+                                                        nullptr,             // BOR_EQUAL
+                                                        nullptr,             // BAND_EQUAL
+                                                        nullptr,             // LSHIFT_EQUAL
+                                                        nullptr,             // RSHIFT_EQUAL
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 76> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 87> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -285,10 +296,21 @@ struct Compiler {
                                                        nullptr,           // ATAN2
                                                        nullptr,           // MIN
                                                        nullptr,           // MAX
+                                                       nullptr,           // PLUS_PLUS
+                                                       nullptr,           // MINUS_MINUS
+                                                       nullptr,           // PLUS_EQUAL
+                                                       nullptr,           // MINUS_EQUAL
+                                                       nullptr,           // STAR_EQUAL
+                                                       nullptr,           // SLASH_EQUAL
+                                                       nullptr,           // MOD_EQUAL
+                                                       nullptr,           // BOR_EQUAL
+                                                       nullptr,           // BAND_EQUAL
+                                                       nullptr,           // LSHIFT_EQUAL
+                                                       nullptr,           // RSHIFT_EQUAL
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 76> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 87> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -362,6 +384,17 @@ struct Compiler {
                                         Precedence::NONE,       // ATAN2
                                         Precedence::NONE,       // MIN
                                         Precedence::NONE,       // MAX                                       
+                                        Precedence::NONE,       // PLUS_PLUS
+                                        Precedence::NONE,       // MINUS_MINUS
+                                        Precedence::NONE,       // PLUS_EQUAL
+                                        Precedence::NONE,       // MINUS_EQUAL
+                                        Precedence::NONE,       // STAR_EQUAL
+                                        Precedence::NONE,       // SLASH_EQUAL
+                                        Precedence::NONE,       // MOD_EQUAL
+                                        Precedence::NONE,       // BOR_EQUAL
+                                        Precedence::NONE,       // BAND_EQUAL
+                                        Precedence::NONE,       // LSHIFT_EQUAL
+                                        Precedence::NONE,       // RSHIFT_EQUAL
                                         Precedence::NONE,       // ERROR
                                         Precedence::NONE};      // END
   // clang-format on
@@ -545,10 +578,59 @@ struct Compiler {
     if (canAssign && match(TokenType::EQUAL)) {
       expression();
       emitBytes(setOp, (std::uint8_t)arg);
-    } else {
-      emitBytes(getOp, (std::uint8_t)arg);
+      return;
     }
+    if (canAssign) {
+      // Compound assignment
+      auto compound = [&](OpCode op) {
+        emitBytes(getOp, (std::uint8_t)arg);
+        expression();
+        emitByte(op);
+        emitBytes(setOp, (std::uint8_t)arg);
+      };
+      // Postfix increment/decrement
+      auto incDec = [&](OpCode op) {
+        emitBytes(getOp, (std::uint8_t)arg);
+        emitConstant(NUMBER_VAL(1.0));
+        emitByte(op);
+        emitBytes(setOp, (std::uint8_t)arg);
+      };
+      if (match(TokenType::PLUS_EQUAL))   { compound(OpCode::ADD);      return; }
+      if (match(TokenType::MINUS_EQUAL))  { compound(OpCode::SUBTRACT); return; }
+      if (match(TokenType::STAR_EQUAL))   { compound(OpCode::MULTIPLY); return; }
+      if (match(TokenType::SLASH_EQUAL))  { compound(OpCode::DIVIDE);   return; }
+      if (match(TokenType::MOD_EQUAL))    { compound(OpCode::MOD);      return; }
+      if (match(TokenType::BOR_EQUAL))    { compound(OpCode::BOR);      return; }
+      if (match(TokenType::BAND_EQUAL))   { compound(OpCode::BAND);     return; }
+      if (match(TokenType::LSHIFT_EQUAL)) { compound(OpCode::LSHIFT);   return; }
+      if (match(TokenType::RSHIFT_EQUAL)) { compound(OpCode::RSHIFT);   return; }
+      if (match(TokenType::PLUS_PLUS))    { incDec(OpCode::ADD);        return; }
+      if (match(TokenType::MINUS_MINUS))  { incDec(OpCode::SUBTRACT);   return; }
+    }
+    emitBytes(getOp, (std::uint8_t)arg);
   }
+  // Prefix ++x / --x
+  void preIncDec(OpCode op) {
+    parser.consume(TokenType::IDENTIFIER,
+                   "Expect variable name after '++' or '--'.");
+    Token name = parser.previous;
+    std::uint8_t getOp, setOp;
+    int arg = resolveLocal(current, &name);
+    if (arg != -1) {
+      getOp = OpCode::GET_LOCAL;
+      setOp = OpCode::SET_LOCAL;
+    } else {
+      arg = identifierConstant(&name);
+      getOp = OpCode::GET_GLOBAL;
+      setOp = OpCode::SET_GLOBAL;
+    }
+    emitBytes(getOp, (std::uint8_t)arg);
+    emitConstant(NUMBER_VAL(1.0));
+    emitByte(op);
+    emitBytes(setOp, (std::uint8_t)arg);
+  }
+  void preInc(bool /*canAssign*/) { preIncDec(OpCode::ADD); }
+  void preDec(bool /*canAssign*/) { preIncDec(OpCode::SUBTRACT); }
   void and_(bool tmp_) {
     int endJump = emitJump(OpCode::JUMP_IF_FALSE);
     emitByte(OpCode::POP);
@@ -944,6 +1026,9 @@ struct Compiler {
   void forStatement() {
     beginScope();
     parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'for'.");
+    // Inside the for-clauses ';' is always the separator
+    char saved_end_line = end_line;
+    end_line = ';';
 
     if (match(TokenType::SEMICOLON)) {
       // no initializer
@@ -957,8 +1042,7 @@ struct Compiler {
     int exitJump = -1;
     if (!match(TokenType::SEMICOLON)) {
       expression();
-      if (end_line == ';')
-        parser.consume(TokenType::SEMICOLON, "Expect ';'.");
+      parser.consume(TokenType::SEMICOLON, "Expect ';' after loop condition.");
 
       exitJump = emitJump(OpCode::JUMP_IF_FALSE);
       emitByte(OpCode::POP);
@@ -969,11 +1053,12 @@ struct Compiler {
       int incrementStart = currentChunk()->code.size();
       expression();
       emitByte(OpCode::POP);
-      parser.consume(TokenType::RIGHT_PAREN, "Expect '(' after clauses.");
+      parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after for clauses.");
       emitLoop(loopStart);
       loopStart = incrementStart;
       patchJump(bodyJump);
     }
+    end_line = saved_end_line;
     statement();
     emitLoop(loopStart);
     if (exitJump != -1) {
