@@ -106,8 +106,8 @@ enum class InterpretResult { OK, COMPILE_ERROR, RUNTIME_ERROR };
   } while (false)
 
 struct VM {
-  Chunk *chunk;
-  std::uint8_t *ip;
+  Chunk *chunk = nullptr;
+  std::uint8_t *ip = nullptr;
   Value stack[STACK_MAX];
   Value *stackTop;
   Value *frameBase;
@@ -126,12 +126,42 @@ struct VM {
   CallFrame frames[FRAMES_MAX];
   int frameCount = 0;
 
-  VM() {
-    // reset the stack pointer
+  VM() { resetExecutionState(); }
+  VM(const VM &) = delete;
+  VM &operator=(const VM &) = delete;
+  VM(VM &&other) noexcept { moveFrom(std::move(other)); }
+  VM &operator=(VM &&other) noexcept {
+    if (this != &other) {
+      globals = std::move(other.globals);
+      functions = std::move(other.functions);
+      classes = std::move(other.classes);
+      instances = std::move(other.instances);
+      resetExecutionState();
+      other.resetExecutionState();
+    }
+    return *this;
+  }
+  ~VM() = default;
+
+  void resetExecutionState() {
+    chunk = nullptr;
+    ip = nullptr;
     stackTop = stack;
     frameBase = stack;
+    frameCount = 0;
+    for (auto &frame : frames) {
+      frame = {};
+    }
   }
-  ~VM() = default; 
+
+  void moveFrom(VM &&other) noexcept {
+    globals = std::move(other.globals);
+    functions = std::move(other.functions);
+    classes = std::move(other.classes);
+    instances = std::move(other.instances);
+    resetExecutionState();
+    other.resetExecutionState();
+  }
 
 
 
