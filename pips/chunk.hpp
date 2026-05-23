@@ -82,6 +82,11 @@ enum OpCode {
   HAS_ATTR,
   STR,
   CALL_METHOD,
+  BUILD_VECTOR,
+  GET_INDEX,
+  SET_INDEX,
+  GET_SLICE,
+  SET_SLICE,
   RETURN
 };
 
@@ -312,6 +317,23 @@ struct Chunk {
       printf("'\n");
       return i + 3;
     }
+    case OpCode::BUILD_VECTOR: {
+      const auto count = code[i + 1];
+      printf("%-16s count=%d\n", "OP_BUILD_VECTOR", count);
+      return i + 2;
+    }
+    case OpCode::GET_INDEX:
+      printf("OP_GET_INDEX\n");
+      return i + 1;
+    case OpCode::SET_INDEX:
+      printf("OP_SET_INDEX\n");
+      return i + 1;
+    case OpCode::GET_SLICE:
+      printf("OP_GET_SLICE\n");
+      return i + 1;
+    case OpCode::SET_SLICE:
+      printf("OP_SET_SLICE\n");
+      return i + 1;
     default:
       printf("Unknown opcode ??\n");
       return i + 1;

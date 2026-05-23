@@ -10,6 +10,7 @@
 //===========================================================================
 #include "types.hpp"
 #include <cstring>
+#include <vector>
 
 namespace pips {
 
@@ -19,9 +20,10 @@ inline void StringToChar(std::string str, char *buff) {
   buff[len] = '\0';
 }
 
-enum class ValueType { BOOL, NIL, STRING, NUMBER, INSTANCE };
+enum class ValueType { BOOL, NIL, STRING, NUMBER, INSTANCE, VECTOR };
 
 struct Instance; // forward declaration; defined in object.hpp
+struct VectorObject; // forward declaration; defined in object.hpp
 
 struct Value {
   ValueType type;
@@ -30,6 +32,7 @@ struct Value {
     Real number;
     char str[STRING_MAX];
     Instance *instance;
+    VectorObject *vector;
   } as;
 
   Value() {
@@ -48,6 +51,11 @@ struct Value {
                                         Instance>) {
       type = ValueType::INSTANCE;
       as.instance = v;
+    } else if constexpr (std::is_pointer_v<T> &&
+                         std::is_same_v<std::remove_cv_t<std::remove_pointer_t<T>>,
+                                        VectorObject>) {
+      type = ValueType::VECTOR;
+      as.vector = v;
     } else if constexpr (std::is_arithmetic_v<T>) {
       type = ValueType::NUMBER;
       as.number = static_cast<Real>(v);
@@ -74,6 +82,9 @@ struct Value {
     case ValueType::INSTANCE:
       as.instance = other.as.instance;
       break;
+    case ValueType::VECTOR:
+      as.vector = other.as.vector;
+      break;
     }
   }
 
@@ -96,10 +107,17 @@ struct Value {
       case ValueType::INSTANCE:
         as.instance = other.as.instance;
         break;
+      case ValueType::VECTOR:
+        as.vector = other.as.vector;
+        break;
       }
     }
     return *this;
   }
+};
+
+struct VectorObject {
+  std::vector<Value> elements;
 };
 
 } // namespace pips

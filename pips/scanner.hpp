@@ -117,6 +117,8 @@ enum class TokenType : unsigned int {
   HASATTR,
   STR,
   NEW,
+  LEFT_BRACKET,
+  RIGHT_BRACKET,
   ERROR,
   END
 };
@@ -430,8 +432,7 @@ struct Scanner {
     return TokenType::IDENTIFIER;
   }
   Token identifier() {
-    while (std::isalpha(peek()) || std::isdigit(peek()) || peek() == '_' ||
-           peek() == '[' || peek() == ']')
+    while (std::isalpha(peek()) || std::isdigit(peek()) || peek() == '_')
       advance();
 
     auto itype = identifierType();
@@ -485,6 +486,10 @@ struct Scanner {
       return Token(TokenType::LEFT_BRACE, start, current, line);
     case '}':
       return Token(TokenType::RIGHT_BRACE, start, current, line);
+    case '[':
+      return Token(TokenType::LEFT_BRACKET, start, current, line);
+    case ']':
+      return Token(TokenType::RIGHT_BRACKET, start, current, line);
     case ';':
       return Token(TokenType::SEMICOLON, start, current, line);
     case ',':
