@@ -19,3 +19,6 @@ jobs:
 
       - name: Build
         run: cmake --build build/ci-build --parallel
+
+      - name: Run example scripts
+        run: sh ./scripts/run_examples.sh ./build/ci-build/repl/repl
