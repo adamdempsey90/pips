@@ -22,3 +22,6 @@ jobs:
 
       - name: Run example scripts
         run: sh ./scripts/run_examples.sh ./build/ci-build/repl/repl
+
+      - name: Check stack limit runtime error
+        run: sh ./scripts/test_stack_limit.sh ./build/ci-build/repl/repl
