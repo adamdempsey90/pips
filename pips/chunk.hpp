@@ -79,6 +79,7 @@ enum OpCode {
   SET_PROPERTY,
   GET_ATTR,
   SET_ATTR,
+  HAS_ATTR,
   STR,
   CALL_METHOD,
   RETURN
