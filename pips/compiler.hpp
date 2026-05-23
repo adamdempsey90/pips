@@ -137,7 +137,7 @@ struct Compiler {
       Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 92> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 94> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -227,10 +227,12 @@ struct Compiler {
                                                         &Compiler::hasAttr, // HASATTR
                                                         &Compiler::str,      // STR
                                                         &Compiler::newExpr,  // NEW
+                                                        &Compiler::vectorLiteral, // LEFT_BRACKET
+                                                        nullptr,             // RIGHT_BRACKET
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 92> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 94> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -320,10 +322,12 @@ struct Compiler {
                                                        nullptr,           // HASATTR
                                                        nullptr,           // STR
                                                        nullptr,           // NEW
+                                                       &Compiler::subscript, // LEFT_BRACKET
+                                                       nullptr,           // RIGHT_BRACKET
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 92> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 94> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -413,6 +417,8 @@ struct Compiler {
                                         Precedence::NONE,       // HASATTR
                                         Precedence::NONE,       // STR
                                         Precedence::NONE,       // NEW
+                                        Precedence::CALL,       // LEFT_BRACKET
+                                        Precedence::NONE,       // RIGHT_BRACKET
                                         Precedence::NONE,       // ERROR
                                         Precedence::NONE};      // END
   // clang-format on
@@ -1010,6 +1016,57 @@ struct Compiler {
   void grouping(bool tmp_) {
     expression();
     parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after expression");
+  }
+  void vectorLiteral(bool /*canAssign*/) {
+    // '[' already consumed by parsePrecedence.
+    std::uint8_t count = 0;
+    if (!check(TokenType::RIGHT_BRACKET)) {
+      do {
+        if (count == 255) {
+          parser.error("Can't have more than 255 elements in a vector literal.");
+        }
+        expression();
+        count++;
+      } while (match(TokenType::COMMA));
+    }
+    parser.consume(TokenType::RIGHT_BRACKET,
+                   "Expect ']' after vector elements.");
+    emitByte(OpCode::BUILD_VECTOR);
+    emitByte(count);
+  }
+  void subscript(bool canAssign) {
+    // '[' already consumed. Parse either `i]` or `[a]:b]` style slice.
+    bool isSlice = false;
+    if (check(TokenType::COLON)) {
+      // [: ...]  -> omitted start
+      emitByte(OpCode::NIL);
+      isSlice = true;
+      parser.advance(); // consume ':'
+      // Parse end (or omitted)
+      if (check(TokenType::RIGHT_BRACKET)) {
+        emitByte(OpCode::NIL);
+      } else {
+        expression();
+      }
+    } else {
+      expression(); // first expression (index or slice start)
+      if (match(TokenType::COLON)) {
+        isSlice = true;
+        if (check(TokenType::RIGHT_BRACKET)) {
+          emitByte(OpCode::NIL);
+        } else {
+          expression();
+        }
+      }
+    }
+    parser.consume(TokenType::RIGHT_BRACKET,
+                   "Expect ']' after subscript.");
+    if (canAssign && match(TokenType::EQUAL)) {
+      expression();
+      emitByte(isSlice ? OpCode::SET_SLICE : OpCode::SET_INDEX);
+      return;
+    }
+    emitByte(isSlice ? OpCode::GET_SLICE : OpCode::GET_INDEX);
   }
   void unary(bool tmp_) {
     auto op_type = parser.previous.type;

@@ -18,12 +18,14 @@ namespace pips {
 #define NUMBER_VAL(value) (Value(value))
 #define STRING_VAL(value) (Value(value))
 #define INSTANCE_VAL(ptr) (Value(ptr))
+#define VECTOR_VAL(ptr) (Value(ptr))
 
 #define IS_BOOL(value) ((value).type == ValueType::BOOL)
 #define IS_NIL(value) ((value).type == ValueType::NIL)
 #define IS_NUMBER(value) ((value).type == ValueType::NUMBER)
 #define IS_STRING(value) ((value).type == ValueType::STRING)
 #define IS_INSTANCE(value) ((value).type == ValueType::INSTANCE)
+#define IS_VECTOR(value) ((value).type == ValueType::VECTOR)
 #define IS_NUMERIC(value)                                                      \
   ((value).type == ValueType::NUMBER || (value).type == ValueType::BOOL)
 
@@ -31,6 +33,7 @@ namespace pips {
 #define AS_NUMBER(value) ((value).as.number)
 #define AS_STRING(value) ((value).as.str)
 #define AS_INSTANCE(value) ((value).as.instance)
+#define AS_VECTOR(value) ((value).as.vector)
 
 extern void printObject(Value val);
 
@@ -72,6 +75,19 @@ inline void printValue(const Value &val) {
   case ValueType::INSTANCE:
     printf("<instance %p>", static_cast<const void *>(AS_INSTANCE(val)));
     break;
+  case ValueType::VECTOR: {
+    VectorObject *v = AS_VECTOR(val);
+    printf("[");
+    if (v) {
+      for (size_t i = 0; i < v->elements.size(); ++i) {
+        if (i)
+          printf(", ");
+        printValue(v->elements[i]);
+      }
+    }
+    printf("]");
+    break;
+  }
   }
 }
 
@@ -95,6 +111,21 @@ inline bool valuesEqual(Value a, Value b) {
   }
   case ValueType::INSTANCE:
     return AS_INSTANCE(a) == AS_INSTANCE(b);
+  case ValueType::VECTOR: {
+    VectorObject *va = AS_VECTOR(a);
+    VectorObject *vb = AS_VECTOR(b);
+    if (va == vb)
+      return true;
+    if (!va || !vb)
+      return false;
+    if (va->elements.size() != vb->elements.size())
+      return false;
+    for (size_t i = 0; i < va->elements.size(); ++i) {
+      if (!valuesEqual(va->elements[i], vb->elements[i]))
+        return false;
+    }
+    return true;
+  }
   default:
     return false;
   }

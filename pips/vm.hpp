@@ -122,6 +122,8 @@ struct VM {
   std::unordered_map<std::string, ClassDef> classes;
   // Owning storage for runtime instance objects.
   std::vector<std::unique_ptr<Instance>> instances;
+  // Owning storage for runtime vector objects.
+  std::vector<std::unique_ptr<VectorObject>> vectors;
 
   CallFrame frames[FRAMES_MAX];
   int frameCount = 0;
@@ -136,6 +138,7 @@ struct VM {
       functions = std::move(other.functions);
       classes = std::move(other.classes);
       instances = std::move(other.instances);
+      vectors = std::move(other.vectors);
       resetExecutionState();
       other.resetExecutionState();
     }
@@ -159,6 +162,7 @@ struct VM {
     functions = std::move(other.functions);
     classes = std::move(other.classes);
     instances = std::move(other.instances);
+    vectors = std::move(other.vectors);
     resetExecutionState();
     other.resetExecutionState();
   }
@@ -202,6 +206,147 @@ struct VM {
     std::string b_str = (pop()).as.str;
     push(Value(b_str + a_str));
   }
+
+  VectorObject *newVector() {
+    vectors.push_back(std::make_unique<VectorObject>());
+    return vectors.back().get();
+  }
+
+  // Apply a scalar arithmetic op identified by `op` ('+', '-', '*', '/', '%',
+  // '^' for pow). Returns false if the op is unknown.
+  static bool applyScalarOp(Real a, Real b, char op, Real &out) {
+    switch (op) {
+    case '+': out = a + b; return true;
+    case '-': out = a - b; return true;
+    case '*': out = a * b; return true;
+    case '/': out = a / b; return true;
+    case '%':
+      out = static_cast<Real>(static_cast<long long>(a) %
+                              static_cast<long long>(b));
+      return true;
+    case '^': out = std::pow(a, b); return true;
+    }
+    return false;
+  }
+
+  // Element-wise / broadcasting arithmetic. Pops two values, pushes result.
+  InterpretResult binaryArith(char op) {
+    Value b = pop();
+    Value a = pop();
+    bool av = IS_VECTOR(a);
+    bool bv = IS_VECTOR(b);
+    if (!av && !bv) {
+      if (!IS_NUMBER(a) || !IS_NUMBER(b)) {
+        runtimeError("Operands must be numbers.");
+        return InterpretResult::RUNTIME_ERROR;
+      }
+      Real r;
+      applyScalarOp(AS_NUMBER(a), AS_NUMBER(b), op, r);
+      push(NUMBER_VAL(r));
+      return InterpretResult::OK;
+    }
+    VectorObject *out = newVector();
+    auto numericElem = [&](const Value &v, Real &r) -> bool {
+      if (!IS_NUMBER(v)) {
+        runtimeError("Vector arithmetic requires numeric elements.");
+        return false;
+      }
+      r = AS_NUMBER(v);
+      return true;
+    };
+    if (av && bv) {
+      auto &ae = AS_VECTOR(a)->elements;
+      auto &be = AS_VECTOR(b)->elements;
+      if (ae.size() != be.size()) {
+        runtimeError("Vector size mismatch: %zu vs %zu.", ae.size(), be.size());
+        return InterpretResult::RUNTIME_ERROR;
+      }
+      out->elements.reserve(ae.size());
+      for (size_t i = 0; i < ae.size(); ++i) {
+        Real ax, bx, r;
+        if (!numericElem(ae[i], ax) || !numericElem(be[i], bx))
+          return InterpretResult::RUNTIME_ERROR;
+        applyScalarOp(ax, bx, op, r);
+        out->elements.push_back(NUMBER_VAL(r));
+      }
+    } else if (av) {
+      if (!IS_NUMBER(b)) {
+        runtimeError("Vector arithmetic requires a numeric scalar.");
+        return InterpretResult::RUNTIME_ERROR;
+      }
+      Real bn = AS_NUMBER(b);
+      auto &ae = AS_VECTOR(a)->elements;
+      out->elements.reserve(ae.size());
+      for (const auto &e : ae) {
+        Real ax, r;
+        if (!numericElem(e, ax))
+          return InterpretResult::RUNTIME_ERROR;
+        applyScalarOp(ax, bn, op, r);
+        out->elements.push_back(NUMBER_VAL(r));
+      }
+    } else {
+      if (!IS_NUMBER(a)) {
+        runtimeError("Vector arithmetic requires a numeric scalar.");
+        return InterpretResult::RUNTIME_ERROR;
+      }
+      Real an = AS_NUMBER(a);
+      auto &be = AS_VECTOR(b)->elements;
+      out->elements.reserve(be.size());
+      for (const auto &e : be) {
+        Real bx, r;
+        if (!numericElem(e, bx))
+          return InterpretResult::RUNTIME_ERROR;
+        applyScalarOp(an, bx, op, r);
+        out->elements.push_back(NUMBER_VAL(r));
+      }
+    }
+    push(VECTOR_VAL(out));
+    return InterpretResult::OK;
+  }
+
+  // Normalize a single index, supporting negative indexing.
+  bool normalizeIndex(std::int64_t raw, size_t size, size_t &out) {
+    std::int64_t i = raw;
+    if (i < 0) i += static_cast<std::int64_t>(size);
+    if (i < 0 || static_cast<size_t>(i) >= size) {
+      runtimeError("Vector index %lld out of range for size %zu.",
+                   static_cast<long long>(raw), size);
+      return false;
+    }
+    out = static_cast<size_t>(i);
+    return true;
+  }
+
+  // Normalize slice bounds: nil bounds become 0 / size; negatives wrap once.
+  // Bounds outside [-size, size] raise a runtime error. Requires lo <= hi.
+  bool normalizeSliceBounds(const Value &loV, const Value &hiV, size_t size,
+                            size_t &loOut, size_t &hiOut) {
+    auto norm = [&](const Value &v, std::int64_t deflt, const char *name,
+                    std::int64_t &out) -> bool {
+      if (IS_NIL(v)) { out = deflt; return true; }
+      std::int64_t x = AS_INTEGER(v);
+      std::int64_t orig = x;
+      if (x < 0) x += static_cast<std::int64_t>(size);
+      if (x < 0 || x > static_cast<std::int64_t>(size)) {
+        runtimeError("Slice %s bound %lld out of range for size %zu.", name,
+                     static_cast<long long>(orig), size);
+        return false;
+      }
+      out = x;
+      return true;
+    };
+    std::int64_t l, h;
+    if (!norm(loV, 0, "lower", l)) return false;
+    if (!norm(hiV, static_cast<std::int64_t>(size), "upper", h)) return false;
+    if (h < l) {
+      runtimeError("Slice upper bound %lld is less than lower bound %lld.",
+                   static_cast<long long>(h), static_cast<long long>(l));
+      return false;
+    }
+    loOut = static_cast<size_t>(l);
+    hiOut = static_cast<size_t>(h);
+    return true;
+  }
   InterpretResult run(VTable &locals) {
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
@@ -217,6 +362,20 @@ struct VM {
       std::uint8_t instruction = (*ip++);
       switch (instruction) {
       case OpCode::NEGATE: {
+        if (IS_VECTOR(peek(0))) {
+          VectorObject *src = AS_VECTOR(pop());
+          VectorObject *out = newVector();
+          out->elements.reserve(src->elements.size());
+          for (const auto &e : src->elements) {
+            if (!IS_NUMBER(e)) {
+              runtimeError("Vector negate requires numeric elements.");
+              return InterpretResult::RUNTIME_ERROR;
+            }
+            out->elements.push_back(NUMBER_VAL(-AS_NUMBER(e)));
+          }
+          push(VECTOR_VAL(out));
+          break;
+        }
         if (!IS_NUMBER(peek(0))) {
           runtimeError("Operand must be a number");
           return InterpretResult::RUNTIME_ERROR;
@@ -379,30 +538,53 @@ struct VM {
       case OpCode::ADD: {
         if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
           concatenate();
+        } else if (IS_VECTOR(peek(0)) || IS_VECTOR(peek(1))) {
+          auto r = binaryArith('+');
+          if (r != InterpretResult::OK) return r;
         } else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
           Real b = AS_NUMBER(pop());
           Real a = AS_NUMBER(pop());
           push(NUMBER_VAL(a + b));
         } else {
-          runtimeError("Operands must be two numbers or two strings!");
+          runtimeError("Operands must be two numbers, two strings, or include a vector!");
           return InterpretResult::RUNTIME_ERROR;
         }
         break;
       }
       case OpCode::SUBTRACT: {
-        BINARY_OP(NUMBER_VAL, -);
+        if (IS_VECTOR(peek(0)) || IS_VECTOR(peek(1))) {
+          auto r = binaryArith('-');
+          if (r != InterpretResult::OK) return r;
+        } else {
+          BINARY_OP(NUMBER_VAL, -);
+        }
         break;
       }
       case OpCode::MULTIPLY: {
-        BINARY_OP(NUMBER_VAL, *);
+        if (IS_VECTOR(peek(0)) || IS_VECTOR(peek(1))) {
+          auto r = binaryArith('*');
+          if (r != InterpretResult::OK) return r;
+        } else {
+          BINARY_OP(NUMBER_VAL, *);
+        }
         break;
       }
       case OpCode::MOD: {
-        MOD_OP(NUMBER_VAL);
+        if (IS_VECTOR(peek(0)) || IS_VECTOR(peek(1))) {
+          auto r = binaryArith('%');
+          if (r != InterpretResult::OK) return r;
+        } else {
+          MOD_OP(NUMBER_VAL);
+        }
         break;
       }
       case OpCode::DIVIDE: {
-        BINARY_OP(NUMBER_VAL, /);
+        if (IS_VECTOR(peek(0)) || IS_VECTOR(peek(1))) {
+          auto r = binaryArith('/');
+          if (r != InterpretResult::OK) return r;
+        } else {
+          BINARY_OP(NUMBER_VAL, /);
+        }
         break;
       }
       case OpCode::INTDIVIDE: {
@@ -410,7 +592,12 @@ struct VM {
         break;
       }
       case OpCode::POW: {
-        STD_BINARY_OP(std::pow, NUMBER_VAL);
+        if (IS_VECTOR(peek(0)) || IS_VECTOR(peek(1))) {
+          auto r = binaryArith('^');
+          if (r != InterpretResult::OK) return r;
+        } else {
+          STD_BINARY_OP(std::pow, NUMBER_VAL);
+        }
         break;
       }
       case OpCode::XOR: {
@@ -709,6 +896,121 @@ struct VM {
       case OpCode::POP:
         pop();
         break;
+      case OpCode::BUILD_VECTOR: {
+        std::uint8_t count = *ip++;
+        VectorObject *vec = newVector();
+        vec->elements.reserve(count);
+        // Elements were pushed in order; they sit at [stackTop-count .. stackTop-1].
+        Value *first = stackTop - count;
+        for (int i = 0; i < count; ++i) {
+          vec->elements.push_back(first[i]);
+        }
+        stackTop -= count;
+        if (!push(VECTOR_VAL(vec)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::GET_INDEX: {
+        Value idxV = pop();
+        Value vecV = pop();
+        if (!IS_VECTOR(vecV)) {
+          runtimeError("Indexing requires a vector.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!IS_NUMBER(idxV) && !IS_BOOL(idxV)) {
+          runtimeError("Vector index must be a number.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        VectorObject *v = AS_VECTOR(vecV);
+        size_t i;
+        if (!normalizeIndex(AS_INTEGER(idxV), v->elements.size(), i))
+          return InterpretResult::RUNTIME_ERROR;
+        if (!push(v->elements[i]))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::SET_INDEX: {
+        Value val = pop();
+        Value idxV = pop();
+        Value vecV = pop();
+        if (!IS_VECTOR(vecV)) {
+          runtimeError("Indexed assignment requires a vector.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!IS_NUMBER(idxV) && !IS_BOOL(idxV)) {
+          runtimeError("Vector index must be a number.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        VectorObject *v = AS_VECTOR(vecV);
+        size_t i;
+        if (!normalizeIndex(AS_INTEGER(idxV), v->elements.size(), i))
+          return InterpretResult::RUNTIME_ERROR;
+        v->elements[i] = val;
+        if (!push(val))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::GET_SLICE: {
+        Value hiV = pop();
+        Value loV = pop();
+        Value vecV = pop();
+        if (!IS_VECTOR(vecV)) {
+          runtimeError("Slicing requires a vector.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!IS_NIL(loV) && !IS_NUMBER(loV) && !IS_BOOL(loV)) {
+          runtimeError("Slice bounds must be numbers.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!IS_NIL(hiV) && !IS_NUMBER(hiV) && !IS_BOOL(hiV)) {
+          runtimeError("Slice bounds must be numbers.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        VectorObject *v = AS_VECTOR(vecV);
+        size_t lo, hi;
+        if (!normalizeSliceBounds(loV, hiV, v->elements.size(), lo, hi))
+          return InterpretResult::RUNTIME_ERROR;
+        VectorObject *out = newVector();
+        out->elements.reserve(hi - lo);
+        for (size_t i = lo; i < hi; ++i)
+          out->elements.push_back(v->elements[i]);
+        if (!push(VECTOR_VAL(out)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::SET_SLICE: {
+        Value rhs = pop();
+        Value hiV = pop();
+        Value loV = pop();
+        Value vecV = pop();
+        if (!IS_VECTOR(vecV)) {
+          runtimeError("Slice assignment requires a vector target.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!IS_VECTOR(rhs)) {
+          runtimeError("Slice assignment right-hand side must be a vector.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!IS_NIL(loV) && !IS_NUMBER(loV) && !IS_BOOL(loV)) {
+          runtimeError("Slice bounds must be numbers.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!IS_NIL(hiV) && !IS_NUMBER(hiV) && !IS_BOOL(hiV)) {
+          runtimeError("Slice bounds must be numbers.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        VectorObject *v = AS_VECTOR(vecV);
+        size_t lo, hi;
+        if (!normalizeSliceBounds(loV, hiV, v->elements.size(), lo, hi))
+          return InterpretResult::RUNTIME_ERROR;
+        const auto &src = AS_VECTOR(rhs)->elements;
+        v->elements.erase(v->elements.begin() + lo,
+                          v->elements.begin() + hi);
+        v->elements.insert(v->elements.begin() + lo, src.begin(), src.end());
+        if (!push(rhs))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
       case OpCode::DEFINE_GLOBAL: {
         std::string name = AS_STRING(chunk->constants[(*ip++)]);
         globals[Utils::getKey(name.c_str())] = peek(0);
