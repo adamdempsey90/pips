@@ -45,5 +45,7 @@ install(FILES
 )
 
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    enable_testing()
     add_subdirectory(repl)
+    add_subdirectory(tests)
 endif()
