@@ -5,10 +5,6 @@
 
 namespace pips {
 
-#ifndef STRING_MAX
-#define STRING_MAX 64
-#endif
-
 #ifndef STACK_MAX
 #define STACK_MAX 256
 #endif

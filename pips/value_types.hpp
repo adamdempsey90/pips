@@ -9,28 +9,24 @@
 // The code was adapted for C++ and simplified in many ways.
 //===========================================================================
 #include "types.hpp"
-#include <cstring>
+#include <string>
+#include <type_traits>
 #include <vector>
 
 namespace pips {
 
-inline void StringToChar(std::string str, char *buff) {
-  size_t len = std::min(str.length(), static_cast<size_t>(STRING_MAX - 1));
-  std::memcpy(buff, str.c_str(), len);
-  buff[len] = '\0';
-}
-
 enum class ValueType { BOOL, NIL, STRING, NUMBER, INSTANCE, VECTOR };
 
-struct Instance; // forward declaration; defined in object.hpp
-struct VectorObject; // forward declaration; defined in object.hpp
+struct Instance;     // forward declaration; defined in object.hpp
+struct VectorObject; // forward declaration; defined below
+struct StringObject; // forward declaration; defined below
 
 struct Value {
   ValueType type;
   union {
     bool boolean;
     Real number;
-    char str[STRING_MAX];
+    StringObject *string;
     Instance *instance;
     VectorObject *vector;
   } as;
@@ -40,12 +36,14 @@ struct Value {
     as.number = 0;
   }
   template <typename T> Value(T v) {
-    if constexpr (std::is_same_v<T, std::string>) {
-      type = ValueType::STRING;
-      StringToChar(v, as.str);
-    } else if constexpr (std::is_same_v<T, bool>) {
+    if constexpr (std::is_same_v<T, bool>) {
       type = ValueType::BOOL;
       as.boolean = v;
+    } else if constexpr (std::is_pointer_v<T> &&
+                         std::is_same_v<std::remove_cv_t<std::remove_pointer_t<T>>,
+                                        StringObject>) {
+      type = ValueType::STRING;
+      as.string = v;
     } else if constexpr (std::is_pointer_v<T> &&
                          std::is_same_v<std::remove_cv_t<std::remove_pointer_t<T>>,
                                         Instance>) {
@@ -60,7 +58,7 @@ struct Value {
       type = ValueType::NUMBER;
       as.number = static_cast<Real>(v);
     } else {
-      static_assert("Unsupported type for Value");
+      static_assert(!std::is_same_v<T, T>, "Unsupported type for Value");
     }
   }
 
@@ -74,7 +72,7 @@ struct Value {
       as.number = 0;
       break;
     case ValueType::STRING:
-      std::strcpy(as.str, other.as.str);
+      as.string = other.as.string;
       break;
     case ValueType::NUMBER:
       as.number = other.as.number;
@@ -99,7 +97,7 @@ struct Value {
         as.number = 0;
         break;
       case ValueType::STRING:
-        std::strcpy(as.str, other.as.str);
+        as.string = other.as.string;
         break;
       case ValueType::NUMBER:
         as.number = other.as.number;
@@ -114,6 +112,10 @@ struct Value {
     }
     return *this;
   }
+};
+
+struct StringObject {
+  std::string str;
 };
 
 struct VectorObject {

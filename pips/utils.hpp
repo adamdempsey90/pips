@@ -39,12 +39,6 @@ inline std::string getKey(const char *chars) {
   return key;
 }
 
-inline void StringToChar(std::string str, char *buff) {
-  size_t len = std::min(str.length(), static_cast<size_t>(STRING_MAX - 1));
-  std::memcpy(buff, str.c_str(), len);
-  buff[len] = '\0';
-}
-
 inline bool ConvertToNumber(const std::string &str, Real &result) {
 
   for (char c : str) {

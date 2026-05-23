@@ -124,6 +124,8 @@ struct VM {
   std::vector<std::unique_ptr<Instance>> instances;
   // Owning storage for runtime vector objects.
   std::vector<std::unique_ptr<VectorObject>> vectors;
+  // Owning storage for runtime string objects.
+  std::vector<std::unique_ptr<StringObject>> strings;
 
   CallFrame frames[FRAMES_MAX];
   int frameCount = 0;
@@ -139,6 +141,7 @@ struct VM {
       classes = std::move(other.classes);
       instances = std::move(other.instances);
       vectors = std::move(other.vectors);
+      strings = std::move(other.strings);
       resetExecutionState();
       other.resetExecutionState();
     }
@@ -163,6 +166,7 @@ struct VM {
     classes = std::move(other.classes);
     instances = std::move(other.instances);
     vectors = std::move(other.vectors);
+    strings = std::move(other.strings);
     resetExecutionState();
     other.resetExecutionState();
   }
@@ -202,9 +206,15 @@ struct VM {
            (IS_INTEGRAL(val) && AS_INTEGER(val) == 0);
   }
   void concatenate() {
-    std::string a_str = (pop()).as.str;
-    std::string b_str = (pop()).as.str;
-    push(Value(b_str + a_str));
+    std::string a_str = AS_STD_STRING(pop());
+    std::string b_str = AS_STD_STRING(pop());
+    push(STRING_VAL(newString(b_str + a_str)));
+  }
+
+  StringObject *newString(std::string s) {
+    strings.push_back(std::make_unique<StringObject>());
+    strings.back()->str = std::move(s);
+    return strings.back().get();
   }
 
   VectorObject *newVector() {
@@ -531,7 +541,7 @@ struct VM {
         if (Utils::ConvertToNumber(evar, num_var)) {
           push(NUMBER_VAL(num_var));
         } else {
-          push(STRING_VAL(evar));
+          push(STRING_VAL(newString(evar)));
         }
         break;
       }
@@ -852,7 +862,7 @@ struct VM {
           runtimeError("str: unsupported value type.");
           return InterpretResult::RUNTIME_ERROR;
         }
-        if (!push(STRING_VAL(s)))
+        if (!push(STRING_VAL(newString(s))))
           return InterpretResult::RUNTIME_ERROR;
         break;
       }
@@ -1350,5 +1360,10 @@ struct VM {
       exit(70);
   }
 };
+
+inline StringObject *vmNewString(VM *vm, std::string s) {
+  return vm->newString(std::move(s));
+}
+
 } // namespace pips
 #endif // PIPS_VM_HPP_

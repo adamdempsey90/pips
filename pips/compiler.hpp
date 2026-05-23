@@ -99,6 +99,7 @@ struct Parser {
 };
 
 struct VM;
+inline StringObject *vmNewString(VM *vm, std::string s);
 
 struct Local {
   Token name;
@@ -566,10 +567,8 @@ struct Compiler {
   }
 
   std::uint8_t identifierConstant(Token *name) {
-    Value val;
-    val.type = ValueType::STRING;
-    name->copy(val.as.str);
-    return makeConstant(val);
+    std::string s(name->start, name->length);
+    return makeConstant(STRING_VAL(vmNewString(pvm, std::move(s))));
   }
   std::uint8_t parseVariable(const char *msg) {
     parser.consume(TokenType::IDENTIFIER, msg);
@@ -608,13 +607,8 @@ struct Compiler {
         continue;
       int slot = resolveLocal(s, name);
       if (slot != -1) {
-        Value v;
-        v.type = ValueType::STRING;
-        // Copy the enclosing function's name into a string Value.
-        std::strncpy(v.as.str, s->function->name.c_str(),
-                     sizeof(v.as.str) - 1);
-        v.as.str[sizeof(v.as.str) - 1] = '\0';
-        outNameConst = makeConstant(v);
+        outNameConst = makeConstant(
+            STRING_VAL(vmNewString(pvm, s->function->name)));
         return slot;
       }
     }
@@ -847,10 +841,8 @@ struct Compiler {
 
     // Default field initializers
     emitByte(OpCode::DUP);
-    Value initName;
-    initName.type = ValueType::STRING;
-    StringToChar(std::string("__init_fields"), initName.as.str);
-    std::uint8_t initConst = makeConstant(initName);
+    std::uint8_t initConst = makeConstant(
+        STRING_VAL(vmNewString(pvm, std::string("__init_fields"))));
     emitByte(OpCode::CALL_METHOD);
     emitByte(initConst);
     emitByte(0);
@@ -1175,12 +1167,8 @@ struct Compiler {
     // The +1 and -2 remove the leading and trailing "
     // If we supported strings without the need of " " we would remove that and
     // possibly make this the default case of the keyword switch?
-    Value val;
-    val.type = ValueType::STRING;
-    std::memcpy(val.as.str, parser.previous.start + 1,
-                parser.previous.length - 2);
-    val.as.str[parser.previous.length - 2] = '\0';
-    emitConstant(val);
+    std::string s(parser.previous.start + 1, parser.previous.length - 2);
+    emitConstant(STRING_VAL(vmNewString(pvm, std::move(s))));
   }
 
   void literal(bool tmp_) {

@@ -141,12 +141,6 @@ struct Token {
       : type(type_), start(start_), line(line_) {
     length = static_cast<int>(current_ - start_);
   }
-  void copy(char *buff) {
-    const size_t len =
-        std::min(static_cast<size_t>(length), static_cast<size_t>(STRING_MAX));
-    std::memcpy(buff, start, len);
-    buff[len] = '\0';
-  }
 };
 
 struct Scanner {

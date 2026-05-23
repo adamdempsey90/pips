@@ -31,7 +31,9 @@ namespace pips {
 
 #define AS_BOOL(value) ((value).as.boolean)
 #define AS_NUMBER(value) ((value).as.number)
-#define AS_STRING(value) ((value).as.str)
+#define AS_STRING(value) ((value).as.string->str.c_str())
+#define AS_STRING_OBJ(value) ((value).as.string)
+#define AS_STD_STRING(value) ((value).as.string->str)
 #define AS_INSTANCE(value) ((value).as.instance)
 #define AS_VECTOR(value) ((value).as.vector)
 
@@ -70,7 +72,7 @@ inline void printValue(const Value &val) {
     printf("%.16lg", static_cast<double>(AS_NUMBER(val)));
     break;
   case ValueType::STRING:
-    printf("%s", val.as.str);
+    printf("%s", val.as.string->str.c_str());
     break;
   case ValueType::INSTANCE:
     printf("<instance %p>", static_cast<const void *>(AS_INSTANCE(val)));
@@ -94,7 +96,11 @@ inline void printValue(const Value &val) {
 inline bool stringCompare(Value a, Value b) {
   if (a.type != ValueType::STRING || b.type != ValueType::STRING)
     return false;
-  return std::strcmp(a.as.str, b.as.str) == 0;
+  if (a.as.string == b.as.string)
+    return true;
+  if (!a.as.string || !b.as.string)
+    return false;
+  return a.as.string->str == b.as.string->str;
 }
 inline bool valuesEqual(Value a, Value b) {
   if (a.type != b.type)
