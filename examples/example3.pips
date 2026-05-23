@@ -1,11 +1,14 @@
+# Classes are declared at script scope and can provide default field values.
 class Pair {
   var left = 1;
   var right = 2;
 
+# Bare field names inside methods resolve through `this`.
   fn sum() {
     return left + right;
   }
 
+# Methods can mutate fields and return the instance for chaining.
   fn scale(k) {
     left = left * k;
     right = right * k;
@@ -13,16 +16,19 @@ class Pair {
   }
 }
 
+# new Pair { ... } allocates an instance and applies field initializers.
 var p = new Pair {
   .left = 10;
   .right = 20;
 }
 
+# Property reads, writes, and method calls all go through the object model.
 print(p.left);
 p.right = 21;
 print(p.sum());
 print(p.scale(2).right);
 
+# Dynamic attributes are separate from declared fields.
 setattr(p, "label", "pair");
 print(getattr(p, "label"));
 print(hasattr(p, "left"), hasattr(p, "missing"));

@@ -1,8 +1,12 @@
+# Global state that will be updated after calling outer().
 var answer = 0;
 
+# outer() demonstrates nested functions, captured locals, branches, loops,
+# returns, and the built-in inspector statements.
 fn outer(limit) {
   var total = 0;
 
+# bump() mutates the enclosing function's local variable.
   fn bump(step) {
     total += step;
     return total;
@@ -26,16 +30,19 @@ fn outer(limit) {
     total += j;
   }
 
+# These inspector statements dump the current function locals and VM stack.
   __locals__;
   __stack__;
 
   return bump(2);
 }
 
+# The first call is evaluated and discarded; the second is stored and printed.
 outer(4);
 answer = outer(2);
 print(answer);
 
+# Top-level inspectors show what names and functions remain registered.
 __list__;
 __globals__;
 __funcs__;
