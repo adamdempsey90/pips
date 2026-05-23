@@ -1,6 +1,6 @@
 # Embedding From C++
 
-See also [Language guide](language.md), [Running code](running.md), and [Examples](examples.md).
+See also [Language guide](language.md), [Calling functions on device](device.md), [Running code](running.md), and [Examples](examples.md).
 
 ## Overview
 
