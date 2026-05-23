@@ -17,6 +17,7 @@ This project is very much a work in progress.
 
 - [Documentation index](doc/README.md)
 - [Language guide](doc/language.md)
+- [Embedding from C++](doc/embedding.md)
 - [Running code](doc/running.md)
 - [Examples](doc/examples.md)
 

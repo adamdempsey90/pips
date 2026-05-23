@@ -211,11 +211,24 @@ struct VM {
     push(STRING_VAL(newString(b_str + a_str)));
   }
 
+  static void hostError(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    std::fputc('\n', stderr);
+  }
+
   StringObject *newString(std::string s) {
     strings.push_back(std::make_unique<StringObject>());
     strings.back()->str = std::move(s);
     return strings.back().get();
   }
+
+  Value makeString(std::string s) {
+    return STRING_VAL(newString(std::move(s)));
+  }
+  Value makeString(const char *s) { return makeString(std::string(s)); }
 
   VectorObject *newVector() {
     vectors.push_back(std::make_unique<VectorObject>());
@@ -357,7 +370,7 @@ struct VM {
     hiOut = static_cast<size_t>(h);
     return true;
   }
-  InterpretResult run(VTable &locals) {
+  InterpretResult run(VTable &locals, Value *outResult = nullptr) {
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
       printf("        ");
@@ -650,6 +663,9 @@ struct VM {
         Value result = pop();
         if (frameCount == 0) {
           // returning from top-level script
+          if (outResult != nullptr) {
+            *outResult = result;
+          }
           return InterpretResult::OK;
         }
         frameCount--;
@@ -1261,6 +1277,39 @@ struct VM {
     VTable locals;
 
     return run(locals);
+  }
+  Value call(const std::string &name, const std::vector<Value> &args) {
+    auto it = functions.find(name);
+    if (it == functions.end()) {
+      hostError("Undefined function '%s'.", name.c_str());
+      return NIL_VAL;
+    }
+
+    Function &fn = it->second;
+    if (args.size() != static_cast<size_t>(fn.arity)) {
+      hostError("Expected %d arguments to function '%s' but got %zu.",
+                fn.arity, name.c_str(), args.size());
+      return NIL_VAL;
+    }
+
+    resetExecutionState();
+    for (const auto &arg : args) {
+      if (!push(arg)) {
+        resetExecutionState();
+        return NIL_VAL;
+      }
+    }
+
+    chunk = &fn.chunk;
+    ip = chunk->code.data();
+    frameBase = stackTop - args.size();
+    frameCount = 0;
+
+    VTable locals;
+    Value result = NIL_VAL;
+    InterpretResult status = run(locals, &result);
+    resetExecutionState();
+    return status == InterpretResult::OK ? result : NIL_VAL;
   }
   InterpretResult interpret(const char *source, char end_line, VTable &locals) {
     Function script;
