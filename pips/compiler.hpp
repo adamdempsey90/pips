@@ -137,7 +137,7 @@ struct Compiler {
       Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 91> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 92> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -224,12 +224,13 @@ struct Compiler {
                                                         nullptr,             // RSHIFT_EQUAL
                                                         &Compiler::setAttr,  // SETATTR
                                                         &Compiler::getAttr,  // GETATTR
+                                                        &Compiler::hasAttr, // HASATTR
                                                         &Compiler::str,      // STR
                                                         &Compiler::newExpr,  // NEW
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 91> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 92> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -316,12 +317,13 @@ struct Compiler {
                                                        nullptr,           // RSHIFT_EQUAL
                                                        nullptr,           // SETATTR
                                                        nullptr,           // GETATTR
+                                                       nullptr,           // HASATTR
                                                        nullptr,           // STR
                                                        nullptr,           // NEW
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 91> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 92> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -408,6 +410,7 @@ struct Compiler {
                                         Precedence::NONE,       // RSHIFT_EQUAL
                                         Precedence::NONE,       // SETATTR
                                         Precedence::NONE,       // GETATTR
+                                        Precedence::NONE,       // HASATTR
                                         Precedence::NONE,       // STR
                                         Precedence::NONE,       // NEW
                                         Precedence::NONE,       // ERROR
@@ -981,6 +984,10 @@ struct Compiler {
   void getAttr(bool tmp_) {
     binary_consume();
     emitByte(OpCode::GET_ATTR);
+  }
+  void hasAttr(bool tmp_) {
+    binary_consume();
+    emitByte(OpCode::HAS_ATTR);
   }
   void str(bool tmp_) {
     parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'str'.");

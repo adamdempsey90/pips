@@ -569,6 +569,29 @@ struct VM {
           return InterpretResult::RUNTIME_ERROR;
         break;
       }
+      case OpCode::HAS_ATTR: {
+        Value nameVal = pop();
+        Value recv = pop();
+        if (!IS_INSTANCE(recv)) {
+          runtimeError("hasattr: first argument must be an instance.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (!IS_STRING(nameVal)) {
+          runtimeError("hasattr: second argument must be a string.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        Instance *inst = AS_INSTANCE(recv);
+        std::string name = AS_STRING(nameVal);
+        auto fit = inst->fields.find(name);
+        if (fit == inst->fields.end()) {
+          if (!push(BOOL_VAL(false)))
+            return InterpretResult::RUNTIME_ERROR;
+        } else {
+          if (!push(BOOL_VAL(true)))
+            return InterpretResult::RUNTIME_ERROR;
+        }
+        break;
+      }
       case OpCode::GET_ATTR: {
         Value nameVal = pop();
         Value recv = pop();

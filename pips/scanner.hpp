@@ -114,6 +114,7 @@ enum class TokenType : unsigned int {
 
   SETATTR,
   GETATTR,
+  HASATTR,
   STR,
   NEW,
   ERROR,
@@ -301,6 +302,8 @@ struct Scanner {
     }
     case 'g':
       return checkKeyword(1, 6, "etattr", TokenType::GETATTR);
+    case 'h':
+      return checkKeyword(1, 6, "asattr", TokenType::HASATTR);
     case 'i':
       return checkKeyword(1, 1, "f", TokenType::IF);
     case 'l': {
