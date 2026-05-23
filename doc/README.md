@@ -5,6 +5,7 @@ This folder contains the user-facing language notes for the current `pips` imple
 ## Start here
 
 - [Language guide](language.md): syntax, constructs, expressions, statements, functions, classes, and vectors.
+- [Embedding from C++](embedding.md): compile scripts in a `VM`, call named functions from host code, and handle `Value` arguments and returns.
 - [Running code](running.md): how the REPL, `-c` snippets, and `-i` files differ in practice.
 - [Examples](examples.md): runnable examples chosen to collectively exercise the whole current VM instruction set.
 
