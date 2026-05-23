@@ -6,6 +6,8 @@ These examples are intentionally chosen so that, taken together, they exercise t
 
 ## 1. Expressions, built-ins, and assignment
 
+Runnable file: [examples/example1.pips](../examples/example1.pips)
+
 ```pips
 var a = 7;
 var b = 3;
@@ -43,6 +45,8 @@ print(a, nothing);
 ```
 
 ## 2. Control flow, functions, closures, and inspectors
+
+Runnable file: [examples/example2.pips](../examples/example2.pips)
 
 ```pips
 var answer = 0;
@@ -95,6 +99,8 @@ Notes:
 
 ## 3. Classes, methods, fields, and dynamic attributes
 
+Runnable file: [examples/example3.pips](../examples/example3.pips)
+
 ```pips
 class Pair {
   var left = 1;
@@ -137,6 +143,8 @@ This example covers:
 - Dynamic attributes with `setattr`, `getattr`, and `hasattr`
 
 ## 4. Vectors, indexing, and slicing
+
+Runnable file: [examples/example4.pips](../examples/example4.pips)
 
 ```pips
 var v = [10, 20, 30, 40];

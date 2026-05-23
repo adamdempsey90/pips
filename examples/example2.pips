@@ -1,0 +1,41 @@
+var answer = 0;
+
+fn outer(limit) {
+  var total = 0;
+
+  fn bump(step) {
+    total += step;
+    return total;
+  }
+
+  bump(1);
+
+  if (limit > 2) {
+    total = total + 10;
+  } else {
+    total = total - 10;
+  }
+
+  var i = 0;
+  while (i < limit) {
+    total += i;
+    i += 1;
+  }
+
+  for (var j = 0; j < 3; j++) {
+    total += j;
+  }
+
+  __locals__;
+  __stack__;
+
+  return bump(2);
+}
+
+outer(4);
+answer = outer(2);
+print(answer);
+
+__list__;
+__globals__;
+__funcs__;

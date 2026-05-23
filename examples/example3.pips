@@ -1,0 +1,29 @@
+class Pair {
+  var left = 1;
+  var right = 2;
+
+  fn sum() {
+    return left + right;
+  }
+
+  fn scale(k) {
+    left = left * k;
+    right = right * k;
+    return this;
+  }
+}
+
+var p = new Pair {
+  .left = 10;
+  .right = 20;
+}
+
+print(p.left);
+p.right = 21;
+print(p.sum());
+print(p.scale(2).right);
+
+setattr(p, "label", "pair");
+print(getattr(p, "label"));
+print(hasattr(p, "left"), hasattr(p, "missing"));
+print(str(p.right));
