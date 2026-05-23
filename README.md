@@ -13,6 +13,13 @@ Compared to the book, `pips` is simplified in several ways (e.g., string handlin
 
 This project is very much a work in progress.
 
+## Documentation
+
+- [Documentation index](doc/README.md)
+- [Language guide](doc/language.md)
+- [Running code](doc/running.md)
+- [Examples](doc/examples.md)
+
 ## Compiling
 
 `pips` is a CMake project and is mostly meant to be included in other projects as a library. 
