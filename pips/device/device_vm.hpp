@@ -1,6 +1,7 @@
 #ifndef PIPS_DEVICE_DEVICE_VM_HPP_
 #define PIPS_DEVICE_DEVICE_VM_HPP_
 
+#include "device_common.hpp"
 #include "device_chunk.hpp"
 #include "device_opcode.hpp"
 #include "device_status.hpp"
@@ -8,15 +9,6 @@
 
 #include <cmath>
 #include <cstdint>
-
-// PIPS_DEVICE_HOST is the qualifier applied to all DeviceVM methods. When
-// compiled by NVCC or HIPCC, it becomes `__host__ __device__` so the same
-// code is usable from both sides. On plain C++ compilers it disappears.
-#if defined(__CUDACC__) || defined(__HIPCC__)
-#define PIPS_DEVICE_HOST __host__ __device__
-#else
-#define PIPS_DEVICE_HOST
-#endif
 
 // Per-thread stack sizing. Override at build time via -D.
 #ifndef PIPS_DEVICE_STACK_MAX

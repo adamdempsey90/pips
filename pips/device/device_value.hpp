@@ -1,6 +1,8 @@
 #ifndef PIPS_DEVICE_DEVICE_VALUE_HPP_
 #define PIPS_DEVICE_DEVICE_VALUE_HPP_
 
+#include "device_common.hpp"
+
 #include <cstdint>
 #include <type_traits>
 
@@ -33,21 +35,21 @@ struct DeviceValue {
 
 // --- Constructors -----------------------------------------------------------
 
-inline DeviceValue dv_nil() {
+PIPS_DEVICE_HOST inline DeviceValue dv_nil() {
   DeviceValue v{};
   v.type = DeviceValueType::NIL;
   v.as.n = 0;
   return v;
 }
 
-inline DeviceValue dv_bool(bool x) {
+PIPS_DEVICE_HOST inline DeviceValue dv_bool(bool x) {
   DeviceValue v{};
   v.type = DeviceValueType::BOOL;
   v.as.b = x;
   return v;
 }
 
-inline DeviceValue dv_number(DeviceReal x) {
+PIPS_DEVICE_HOST inline DeviceValue dv_number(DeviceReal x) {
   DeviceValue v{};
   v.type = DeviceValueType::NUMBER;
   v.as.n = x;
@@ -56,24 +58,26 @@ inline DeviceValue dv_number(DeviceReal x) {
 
 // --- Predicates / accessors -------------------------------------------------
 
-inline constexpr bool dv_is_nil(const DeviceValue &v) {
+PIPS_DEVICE_HOST inline constexpr bool dv_is_nil(const DeviceValue &v) {
   return v.type == DeviceValueType::NIL;
 }
-inline constexpr bool dv_is_bool(const DeviceValue &v) {
+PIPS_DEVICE_HOST inline constexpr bool dv_is_bool(const DeviceValue &v) {
   return v.type == DeviceValueType::BOOL;
 }
-inline constexpr bool dv_is_number(const DeviceValue &v) {
+PIPS_DEVICE_HOST inline constexpr bool dv_is_number(const DeviceValue &v) {
   return v.type == DeviceValueType::NUMBER;
 }
-inline constexpr bool dv_as_bool(const DeviceValue &v) { return v.as.b; }
-inline constexpr DeviceReal dv_as_number(const DeviceValue &v) {
+PIPS_DEVICE_HOST inline constexpr bool dv_as_bool(const DeviceValue &v) {
+  return v.as.b;
+}
+PIPS_DEVICE_HOST inline constexpr DeviceReal dv_as_number(const DeviceValue &v) {
   return v.as.n;
 }
 
 // `nil` and `false` are falsey; everything else (including 0.0) is truthy.
 // This mirrors how the host VM uses `isFalsey` on values that have been
 // reduced to the device subset.
-inline constexpr bool dv_is_falsey(const DeviceValue &v) {
+PIPS_DEVICE_HOST inline constexpr bool dv_is_falsey(const DeviceValue &v) {
   return dv_is_nil(v) || (dv_is_bool(v) && !v.as.b);
 }
 
