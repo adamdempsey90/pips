@@ -5,15 +5,6 @@
 
 #include <cstdint>
 
-// `DeviceModule` and `DeviceFunction` are pointer-only "view" types. They
-// describe a packed module sitting in some memory region (host RAM, GPU
-// global memory, etc.). They do NOT own their backing storage and are safe
-// to pass by value across the host/device boundary.
-//
-// On the host side, callers can use `DeviceModuleStorage` (declared below
-// only when this header is included from non-device translation units) to
-// build a module into owned std::vector buffers and then obtain a
-// `DeviceModule` view of them.
 
 namespace pips {
 namespace device {
@@ -41,9 +32,6 @@ struct DeviceModule {
 } // namespace device
 } // namespace pips
 
-// Host-side owning storage. Pulled in only when `<vector>` and `<string>` are
-// available (which they are on host but not necessarily on device builds).
-// The device-only translation units never include the rest of this header.
 #if !defined(PIPS_DEVICE_ONLY)
 
 #include <string>
@@ -58,8 +46,7 @@ struct DeviceModuleStorage {
   std::vector<DeviceFunction> functions;
   std::vector<DeviceValue> globals;
 
-  // Host-side metadata, retained for debugging / introspection only. These
-  // strings are NOT copied to device memory.
+  // Host-side metadata
   std::vector<std::string> function_names;
   std::vector<std::string> global_names;
 

@@ -53,7 +53,6 @@ inline int host_operand_size(OpCode op) {
 }
 
 // Convert a host pips::Value to a DeviceValue if it is in the device subset
-// (nil / bool / number). Returns false otherwise.
 inline bool host_to_device_value(const Value &v, DeviceValue &out) {
   switch (v.type) {
   case ValueType::NIL: out = dv_nil(); return true;
@@ -68,24 +67,6 @@ inline bool host_to_device_value(const Value &v, DeviceValue &out) {
 
 } // namespace detail
 
-// Pack the function named `entry` (which must already have been registered
-// on `vm` via `vm.interpret(...)`) plus every function transitively called
-// from it into a packed device module. The packer:
-//
-//   * walks the host bytecode of each visited function;
-//   * rejects any opcode outside the numeric/bool subset
-//     (strings, vectors, classes-as-objects, attrs, env, print, etc.);
-//   * rewrites `CALL <name>` into `CALL_ID <u16 func_id>`;
-//   * collects globals that are read by the bytecode (via `GET_GLOBAL`)
-//     and snapshots their current values from `vm.globals`;
-//   * recognises `GET_GLOBAL <ClassName>` immediately followed by
-//     `GET_PROPERTY <member>` and folds it into a single
-//     `GET_GLOBAL_ID <slot for ClassName.member>`; the value is pulled
-//     from the class instance currently held in `vm.globals[ClassName]`.
-//
-// On success returns true, writes the entry function's id into `out_entry_id`
-// and fills `out`. On failure returns false and writes a human-readable
-// reason into `out_error`.
 inline bool pack_function(const VM &vm,
                           const std::string &entry,
                           DeviceModuleStorage &out,
@@ -102,17 +83,13 @@ struct Packer {
   const VM &vm;
   std::string error;
 
-  // First-seen ordering for visited functions (host name -> device id).
   std::unordered_map<std::string, std::uint32_t> func_ids;
   std::vector<std::string> func_order; // device id -> host name
 
-  // First-seen ordering for globals (slot name -> id).
-  // For class members the slot name is "Class.member".
   std::unordered_map<std::string, std::uint16_t> global_ids;
   std::vector<std::string> global_names;
   std::vector<DeviceValue> global_values;
 
-  // Output bytecode + constants, one rewritten block per function.
   struct PackedFn {
     std::vector<std::uint8_t> code;
     std::vector<DeviceValue> constants;
@@ -123,22 +100,12 @@ struct Packer {
 
   Packer(const VM &v) : vm(v) {}
 
-  template <typename... Args> bool fail(const char *fmt, Args... args) {
-    char buf[256];
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-security"
-#endif
-    std::snprintf(buf, sizeof(buf), fmt, args...);
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-    error = buf;
+  bool fail(const std::string &msg) {
+    error = msg;
     return false;
   }
 
-  // Look up a name in vm.globals (definition in vm.hpp; this is implemented
-  // inline below by the public entry point because it can't see VM here).
+
   const Value *find_global(const std::string &name) const;
   const Function *find_function(const std::string &name) const;
   const std::unordered_map<std::string, ClassDef> &class_table() const;
@@ -156,11 +123,11 @@ struct Packer {
 
   bool resolve_plain_global(const std::string &name, std::uint16_t &out_id) {
     const Value *gv = find_global(name);
-    if (!gv) return fail("Global '%s' not found.", name.c_str());
+    if (!gv) return fail("Global '" + name + "' not found.");
     DeviceValue dv;
     if (!host_to_device_value(*gv, dv))
-      return fail("Global '%s' is not a device-safe value (nil/bool/number).",
-                  name.c_str());
+      return fail("Global '" + name +
+                  "' is not a device-safe value (nil/bool/number).");
     out_id = intern_global(name, dv);
     return true;
   }
@@ -174,23 +141,55 @@ struct Packer {
       return true;
     }
     const Value *gv = find_global(cls);
-    if (!gv) return fail("Class instance '%s' not found.", cls.c_str());
+    if (!gv) return fail("Class instance '" + cls + "' not found.");
     if (gv->type != ValueType::INSTANCE)
-      return fail("'%s' is not a class instance.", cls.c_str());
+      return fail("'" + cls + "' is not a class instance.");
     Instance *inst = gv->as.instance;
     auto fit = inst->fields.find(member);
     if (fit == inst->fields.end())
-      return fail("Class '%s' has no member '%s'.", cls.c_str(),
-                  member.c_str());
+      return fail("Class '" + cls + "' has no member '" + member + "'.");
     DeviceValue dv;
     if (!host_to_device_value(fit->second, dv))
-      return fail("Class member '%s.%s' is not a device-safe value.",
-                  cls.c_str(), member.c_str());
+      return fail("Class member '" + cls + "." + member +
+                  "' is not a device-safe value.");
     out_id = intern_global(slot, dv);
     return true;
   }
 
-  // Visit a function name: ensure it is enrolled in func_ids, return its id.
+  bool resolve_vector_element(const std::string &name, const Value &index_value,
+                              std::uint16_t &out_id) {
+    const Value *gv = find_global(name);
+    if (!gv) return fail("Global '" + name + "' not found.");
+    if (gv->type != ValueType::VECTOR)
+      return fail("Global '" + name + "' is not a vector.");
+    if (!IS_INTEGRAL(index_value))
+      return fail("Global vector index for '" + name +
+                  "' must be an integer constant.");
+
+    VectorObject *vec = gv->as.vector;
+    const std::size_t size = vec ? vec->elements.size() : 0;
+    const std::int64_t raw_index = AS_INTEGER(index_value);
+    std::int64_t norm_index = raw_index;
+    if (norm_index < 0) norm_index += static_cast<std::int64_t>(size);
+    if (norm_index < 0 || static_cast<std::size_t>(norm_index) >= size) {
+      return fail("Global vector index " + std::to_string(raw_index) +
+                  " out of range for '" + name + "' of size " +
+                  std::to_string(size) + ".");
+    }
+
+    const std::size_t element_index = static_cast<std::size_t>(norm_index);
+    DeviceValue dv;
+    if (!host_to_device_value(vec->elements[element_index], dv)) {
+      return fail("Global vector element '" + name + "[" +
+                  std::to_string(element_index) +
+                  "]' is not a device-safe value.");
+    }
+
+    out_id = intern_global(name + "[" + std::to_string(element_index) + "]",
+                           dv);
+    return true;
+  }
+
   bool enroll(const std::string &name, std::uint32_t &out_id) {
     auto it = func_ids.find(name);
     if (it != func_ids.end()) {
@@ -198,7 +197,7 @@ struct Packer {
       return true;
     }
     if (!find_function(name))
-      return fail("Function '%s' is not defined.", name.c_str());
+      return fail("Function '" + name + "' is not defined.");
     std::uint32_t id = static_cast<std::uint32_t>(func_order.size());
     func_ids.emplace(name, id);
     func_order.push_back(name);
@@ -206,12 +205,8 @@ struct Packer {
     return true;
   }
 
-  // ---- Per-function rewrite pass ----
-  //
-  // Translates one host Chunk into a PackedFn. Folds CALL/GET_GLOBAL/
-  // GET_GLOBAL+GET_PROPERTY operands, rejects banned opcodes, builds the
-  // per-function constant pool (numeric/bool/nil only), and remaps jump
-  // offsets through an old->new offset table.
+  
+  // Translates one host Chunk into a PackedFn
   bool rewrite(const Function &fn, PackedFn &out_fn,
                std::deque<std::string> &worklist) {
     using OC = DeviceOpCode;
@@ -219,18 +214,16 @@ struct Packer {
     const std::vector<std::uint8_t> &code = c.code;
     const std::vector<Value> &consts = c.constants;
 
-    // -- Pass A: scan opcode by opcode, compute new offsets, validate.
-    // We record old_offset -> new_offset at instruction boundaries.
+
     std::vector<std::uint32_t> old_to_new(code.size() + 1, 0);
-    // For each opcode in source order, also record the "decision" we made
-    // so Pass B can emit without redoing all the lookups.
+
     enum class Action : std::uint8_t {
       EMIT_TRIVIAL,   // 1 byte opcode, no operand
       EMIT_CONST,     // CONSTANT with new local idx
       EMIT_LOCAL,     // GET_LOCAL/SET_LOCAL, copy slot byte
       EMIT_GLOBAL_ID, // GET_GLOBAL plain → GET_GLOBAL_ID
-      FOLD_CLASSMEMBER, // GET_GLOBAL + GET_PROPERTY fold; this entry is the
-                        // first instruction; the second is SKIPPED.
+      FOLD_CLASSMEMBER, // GET_GLOBAL + GET_PROPERTY fold
+      FOLD_VECTOR_ELEMENT, // GET_GLOBAL + CONSTANT + GET_INDEX fold.
       SKIP,             // operand-only marker (the GET_PROPERTY half of a fold)
       EMIT_CALL_ID,
       EMIT_JUMP,
@@ -247,23 +240,21 @@ struct Packer {
     std::vector<Step> steps;
     steps.reserve(code.size());
 
-    // Per-function constant pool (rebuilt with only numeric/bool/nil) and a
-    // map from old constant idx to new idx.
     std::unordered_map<int, std::uint8_t> const_remap;
 
     auto get_or_add_const = [&](int old_idx, std::uint8_t &new_idx) -> bool {
       auto it = const_remap.find(old_idx);
       if (it != const_remap.end()) { new_idx = it->second; return true; }
       if (old_idx < 0 || static_cast<size_t>(old_idx) >= consts.size())
-        return fail("Bad constant index %d in function '%s'.", old_idx,
-                    fn.name.c_str());
+        return fail("Bad constant index " + std::to_string(old_idx) +
+                    " in function '" + fn.name + "'.");
       DeviceValue dv;
       if (!host_to_device_value(consts[old_idx], dv))
-        return fail("Function '%s' references a non-device-safe constant.",
-                    fn.name.c_str());
+        return fail("Function '" + fn.name +
+                    "' references a non-device-safe constant.");
       if (out_fn.constants.size() >= 255)
-        return fail("Function '%s' exceeds 255 device-safe constants.",
-                    fn.name.c_str());
+        return fail("Function '" + fn.name +
+                    "' exceeds 255 device-safe constants.");
       new_idx = static_cast<std::uint8_t>(out_fn.constants.size());
       out_fn.constants.push_back(dv);
       const_remap.emplace(old_idx, new_idx);
@@ -277,13 +268,11 @@ struct Packer {
       OpCode op = static_cast<OpCode>(code[i]);
       int opsize = 1 + host_operand_size(op);
       if (i + static_cast<size_t>(opsize) > code.size())
-        return fail("Truncated opcode in function '%s'.", fn.name.c_str());
+        return fail("Truncated opcode in function '" + fn.name + "'.");
 
       Step s{};
       s.old_ip = static_cast<std::uint32_t>(i);
 
-      // Default mapping: host opcode -> device opcode for trivially-mapped
-      // ops; banned ops produce a clear error below.
       auto map_simple = [&](DeviceOpCode dop) {
         s.action = Action::EMIT_TRIVIAL;
         s.out_op = dop;
@@ -355,28 +344,47 @@ struct Packer {
       case OpCode::GET_GLOBAL: {
         const Value &nv = consts[code[i + 1]];
         if (nv.type != ValueType::STRING)
-          return fail("GET_GLOBAL operand is not a string in '%s'.",
-                      fn.name.c_str());
+          return fail("GET_GLOBAL operand is not a string in '" + fn.name +
+                      "'.");
         std::string name = nv.as.string->str;
-        // Look ahead: is the next op GET_PROPERTY?  If so, and the global
-        // resolves to an INSTANCE, fold into a single class-member slot.
+
         bool folded = false;
         if (i + 2 < code.size() &&
             static_cast<OpCode>(code[i + 2]) == OpCode::GET_PROPERTY) {
           const Value *gv = find_global(name);
           if (gv && gv->type == ValueType::INSTANCE) {
-            // peek member name from the GET_PROPERTY operand
             if (i + 3 >= code.size())
-              return fail("Truncated GET_PROPERTY in '%s'.", fn.name.c_str());
+              return fail("Truncated GET_PROPERTY in function '" + fn.name +
+                          "'.");
             std::uint8_t mc = code[i + 3];
             if (mc >= consts.size() ||
                 consts[mc].type != ValueType::STRING)
-              return fail("GET_PROPERTY operand is not a string in '%s'.",
-                          fn.name.c_str());
+              return fail("GET_PROPERTY operand is not a string in '" +
+                          fn.name + "'.");
             std::string member = consts[mc].as.string->str;
             std::uint16_t gid = 0;
             if (!resolve_class_member(name, member, gid)) return false;
             s.action = Action::FOLD_CLASSMEMBER;
+            s.out_op = OC::GET_GLOBAL_ID;
+            s.operand16 = gid;
+            folded = true;
+          }
+        }
+ 
+        if (!folded && i + 4 < code.size() &&
+            static_cast<OpCode>(code[i + 2]) == OpCode::CONSTANT &&
+            static_cast<OpCode>(code[i + 4]) == OpCode::GET_INDEX) {
+          const Value *gv = find_global(name);
+          if (gv && gv->type == ValueType::VECTOR) {
+            std::uint8_t index_const = code[i + 3];
+            if (index_const >= consts.size()) {
+              return fail("Bad vector index constant in function '" + fn.name +
+                          "'.");
+            }
+            std::uint16_t gid = 0;
+            if (!resolve_vector_element(name, consts[index_const], gid))
+              return false;
+            s.action = Action::FOLD_VECTOR_ELEMENT;
             s.out_op = OC::GET_GLOBAL_ID;
             s.operand16 = gid;
             folded = true;
@@ -396,13 +404,11 @@ struct Packer {
         std::uint8_t argc = code[i + 2];
         if (name_idx >= consts.size() ||
             consts[name_idx].type != ValueType::STRING)
-          return fail("CALL operand is not a string in '%s'.",
-                      fn.name.c_str());
+          return fail("CALL operand is not a string in '" + fn.name + "'.");
         std::string callee = consts[name_idx].as.string->str;
         std::uint32_t fid = 0;
         if (!enroll(callee, fid)) return false;
         if (fid > 0xFFFF) return fail("Too many functions (>65535).");
-        // Always enqueue; the outer pack() loop dedups via packed[fid].code.
         worklist.push_back(callee);
         s.action = Action::EMIT_CALL_ID;
         s.out_op = OC::CALL_ID;
@@ -433,16 +439,13 @@ struct Packer {
       // ---- Banned ops -----------------------------------------------------
       case OpCode::DEFINE_GLOBAL:
       case OpCode::SET_GLOBAL:
-        return fail("Function '%s' writes a global; globals are read-only "
-                    "on the device.",
-                    fn.name.c_str());
+        return fail("Function '" + fn.name +
+                    "' writes a global; globals are read-only on the device.");
       case OpCode::GET_PROPERTY:
-        // Only allowed as the tail of a GET_GLOBAL+GET_PROPERTY fold; if we
-        // see one here unfolded, the receiver wasn't a class-instance global.
-        return fail("Function '%s' uses GET_PROPERTY outside of a "
-                    "ClassName.member read; per-instance properties are not "
-                    "supported on the device.",
-                    fn.name.c_str());
+        // Only allowed as the tail of a GET_GLOBAL+GET_PROPERTY fold
+        return fail("Function '" + fn.name +
+                    "' uses GET_PROPERTY outside of a ClassName.member read; "
+                    "per-instance properties are not supported on the device.");
       case OpCode::SET_PROPERTY:
       case OpCode::NEW_INSTANCE:
       case OpCode::CALL_METHOD:
@@ -466,12 +469,11 @@ struct Packer {
       case OpCode::NEWLINE:
       case OpCode::GET_OUTER:
       case OpCode::SET_OUTER:
-        return fail("Function '%s' uses opcode %d which is not supported on "
-                    "the device.",
-                    fn.name.c_str(), static_cast<int>(op));
+        return fail("Function '" + fn.name + "' uses opcode " +
+                    std::to_string(static_cast<int>(op)) +
+                    " which is not supported on the device.");
       }
 
-      // Output size for this step.
       std::uint32_t out_size = 0;
       switch (s.action) {
       case Action::EMIT_TRIVIAL: out_size = 1; break;
@@ -479,6 +481,7 @@ struct Packer {
       case Action::EMIT_LOCAL: out_size = 2; break;
       case Action::EMIT_GLOBAL_ID:
       case Action::FOLD_CLASSMEMBER:
+      case Action::FOLD_VECTOR_ELEMENT:
         out_size = 3; break;
       case Action::EMIT_CALL_ID: out_size = 4; break;
       case Action::EMIT_JUMP:
@@ -490,10 +493,7 @@ struct Packer {
       new_offset += out_size;
       i += opsize;
 
-      // If we folded, mark the following GET_PROPERTY as SKIP. Its offset
-      // still needs to map to *something* sensible for any jump that may
-      // (in theory) target it -- map it to the position immediately after
-      // the folded instruction.
+
       if (s.action == Action::FOLD_CLASSMEMBER) {
         std::uint32_t skipped_old_ip = static_cast<std::uint32_t>(i);
         old_to_new[skipped_old_ip] = new_offset;
@@ -502,11 +502,26 @@ struct Packer {
         skip.action = Action::SKIP;
         steps.push_back(skip);
         i += 2; // GET_PROPERTY + operand byte
+      } else if (s.action == Action::FOLD_VECTOR_ELEMENT) {
+        std::uint32_t const_old_ip = static_cast<std::uint32_t>(i);
+        old_to_new[const_old_ip] = new_offset;
+        Step skip_const{};
+        skip_const.old_ip = const_old_ip;
+        skip_const.action = Action::SKIP;
+        steps.push_back(skip_const);
+
+        std::uint32_t get_index_old_ip = const_old_ip + 2;
+        old_to_new[get_index_old_ip] = new_offset;
+        Step skip_get_index{};
+        skip_get_index.old_ip = get_index_old_ip;
+        skip_get_index.action = Action::SKIP;
+        steps.push_back(skip_get_index);
+
+        i += 3; // CONSTANT + operand byte, then GET_INDEX
       }
     }
     old_to_new[code.size()] = new_offset;
 
-    // -- Pass B: emit bytes, resolving jumps via old_to_new.
     out_fn.code.reserve(new_offset);
     for (const Step &s : steps) {
       switch (s.action) {
@@ -524,6 +539,7 @@ struct Packer {
         break;
       case Action::EMIT_GLOBAL_ID:
       case Action::FOLD_CLASSMEMBER:
+      case Action::FOLD_VECTOR_ELEMENT:
         out_fn.code.push_back(static_cast<std::uint8_t>(s.out_op));
         out_fn.code.push_back(static_cast<std::uint8_t>(s.operand16 >> 8));
         out_fn.code.push_back(static_cast<std::uint8_t>(s.operand16 & 0xFF));
@@ -537,14 +553,14 @@ struct Packer {
       case Action::EMIT_JUMP: {
         std::uint32_t new_ip = old_to_new[s.old_ip];
         if (s.old_target > code.size())
-          return fail("Jump target out of range in '%s'.", fn.name.c_str());
+          return fail("Jump target out of range in '" + fn.name + "'.");
         std::uint32_t new_target = old_to_new[s.old_target];
         if (new_target < new_ip + 3)
-          return fail("Forward jump went backwards after rewrite in '%s'.",
-                      fn.name.c_str());
+          return fail("Forward jump went backwards after rewrite in '" +
+                      fn.name + "'.");
         std::uint32_t off = new_target - (new_ip + 3);
         if (off > 0xFFFF)
-          return fail("Jump offset >65535 in '%s'.", fn.name.c_str());
+          return fail("Jump offset >65535 in '" + fn.name + "'.");
         out_fn.code.push_back(static_cast<std::uint8_t>(s.out_op));
         out_fn.code.push_back(static_cast<std::uint8_t>(off >> 8));
         out_fn.code.push_back(static_cast<std::uint8_t>(off & 0xFF));
@@ -553,14 +569,14 @@ struct Packer {
       case Action::EMIT_LOOP: {
         std::uint32_t new_ip = old_to_new[s.old_ip];
         if (s.old_target > code.size())
-          return fail("Loop target out of range in '%s'.", fn.name.c_str());
+          return fail("Loop target out of range in '" + fn.name + "'.");
         std::uint32_t new_target = old_to_new[s.old_target];
         if (new_ip + 3 < new_target)
-          return fail("Backward loop went forwards after rewrite in '%s'.",
-                      fn.name.c_str());
+          return fail("Backward loop went forwards after rewrite in '" +
+                      fn.name + "'.");
         std::uint32_t off = (new_ip + 3) - new_target;
         if (off > 0xFFFF)
-          return fail("Loop offset >65535 in '%s'.", fn.name.c_str());
+          return fail("Loop offset >65535 in '" + fn.name + "'.");
         out_fn.code.push_back(static_cast<std::uint8_t>(s.out_op));
         out_fn.code.push_back(static_cast<std::uint8_t>(off >> 8));
         out_fn.code.push_back(static_cast<std::uint8_t>(off & 0xFF));
@@ -570,9 +586,6 @@ struct Packer {
     }
 
     out_fn.arity = static_cast<std::uint8_t>(fn.arity);
-    // Conservative max_stack estimate: scan the rewritten bytecode and
-    // track stack delta. This is the same heuristic used in many small
-    // VMs and is good enough for v1.
     int cur = static_cast<int>(fn.arity);
     int hi = cur;
     std::size_t pi = 0;
@@ -612,7 +625,6 @@ struct Packer {
       case DeviceOpCode::JUMP: delta = 0; sz = 3; break;
       case DeviceOpCode::LOOP: delta = 0; sz = 3; break;
       case DeviceOpCode::CALL_ID: {
-        // Pops argc args, pushes one result.
         std::uint8_t argc = out_fn.code[pi + 3];
         delta = -static_cast<int>(argc) + 1;
         sz = 4;
@@ -622,7 +634,7 @@ struct Packer {
       }
       cur += delta;
       if (cur > hi) hi = cur;
-      if (cur < 0) cur = 0; // be permissive on the heuristic
+      if (cur < 0) cur = 0;
       pi += sz;
     }
     if (hi > 255) hi = 255;
@@ -630,10 +642,9 @@ struct Packer {
     return true;
   }
 
-  // ---- Driver ----
   bool pack(const std::string &entry, std::uint32_t &out_entry_id) {
     if (!find_function(entry))
-      return fail("Entry function '%s' is not defined.", entry.c_str());
+      return fail("Entry function '" + entry + "' is not defined.");
     std::uint32_t entry_id = 0;
     if (!enroll(entry, entry_id)) return false;
     out_entry_id = entry_id;
@@ -649,24 +660,21 @@ struct Packer {
       if (id < packed.size() && !packed[id].code.empty()) continue;
       if (id >= packed.size()) packed.resize(id + 1);
       const Function *fn = find_function(name);
-      if (!fn) return fail("Function '%s' is not defined.", name.c_str());
+      if (!fn) return fail("Function '" + name + "' is not defined.");
       PackedFn pf;
       if (!rewrite(*fn, pf, worklist)) return false;
       if (pf.code.empty()) {
-        // empty function body shouldn't happen, but guard against it
         pf.code.push_back(static_cast<std::uint8_t>(DeviceOpCode::NIL));
         pf.code.push_back(static_cast<std::uint8_t>(DeviceOpCode::RETURN));
       }
       packed[id] = std::move(pf);
     }
 
-    // Any function that was enrolled but never rewritten (because no caller
-    // actually reached it) should not exist; the worklist seeded by enroll()
-    // ensures every enrolled function is rewritten. Sanity check:
+
     for (std::size_t k = 0; k < packed.size(); ++k) {
       if (packed[k].code.empty())
-        return fail("Internal: function '%s' enrolled but not packed.",
-                    func_order[k].c_str());
+        return fail("Internal: function '" + func_order[k] +
+                    "' enrolled but not packed.");
     }
     return true;
   }
@@ -703,13 +711,6 @@ struct Packer {
 } // namespace device
 } // namespace pips
 
-// ---------------------------------------------------------------------------
-// Implementations that need to see the full `VM` type. They are defined here
-// in the device_pack.hpp header so users only have to include this header
-// (and naturally vm.hpp must be visible first, since pack_function takes a
-// const VM&). We use the function-template / inline approach to keep the
-// header-only structure.
-// ---------------------------------------------------------------------------
 
 #include "../vm.hpp"
 

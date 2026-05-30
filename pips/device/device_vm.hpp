@@ -10,7 +10,7 @@
 #include <cmath>
 #include <cstdint>
 
-// Per-thread stack sizing. Override at build time via -D.
+// Per-thread stack sizing
 #ifndef PIPS_DEVICE_STACK_MAX
 #define PIPS_DEVICE_STACK_MAX 64
 #endif
@@ -44,9 +44,7 @@ struct DeviceVM {
     return stack[sp - 1 - back];
   }
 
-  // Execute a packed function with the given argument list and write the
-  // function's return value into *out_result. Returns OK on success or an
-  // error status on failure (in which case *out_result is unmodified).
+  // Execute a packed function
   PIPS_DEVICE_HOST DeviceStatus run(const DeviceModule &module,
                                     std::uint32_t entry_id,
                                     const DeviceValue *args,
