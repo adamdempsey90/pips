@@ -1,0 +1,36 @@
+{
+  "name": "pips-language",
+  "displayName": "pips Language Support",
+  "description": "Syntax highlighting and language configuration for the pips language.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "pips",
+        "aliases": [
+          "pips",
+          "Pips"
+        ],
+        "extensions": [
+          ".pips"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "pips",
+        "scopeName": "source.pips",
+        "path": "./syntaxes/pips.tmLanguage.json"
+      }
+    ]
+  }
+}
