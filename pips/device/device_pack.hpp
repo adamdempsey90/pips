@@ -1,10 +1,6 @@
 #ifndef PIPS_DEVICE_DEVICE_PACK_HPP_
 #define PIPS_DEVICE_DEVICE_PACK_HPP_
 
-// Host-side packer that converts a `pips::Function` (and its transitively
-// called functions, restricted to the numeric+bool subset) into a flat
-// `DeviceModule` suitable for upload to a device. See doc/embedding.md.
-
 #include "../chunk.hpp"
 #include "device_chunk.hpp"
 #include "device_opcode.hpp"
@@ -22,7 +18,8 @@
 
 namespace pips {
 
-struct VM; // forward decl; defined in vm.hpp
+// need to forward declare
+struct VM;
 
 namespace device {
 

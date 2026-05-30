@@ -23,30 +23,24 @@ namespace device {
 
 struct DeviceFrame {
   std::uint32_t func_id;
-  std::uint32_t ip;          // offset into module.code (absolute)
-  std::uint32_t frame_base;  // index into DeviceVM::stack
+  std::uint32_t ip;         
+  std::uint32_t frame_base; 
 };
 
+// A simple bytecode VM that executes per-thread on device
 struct DeviceVM {
   DeviceValue stack[PIPS_DEVICE_STACK_MAX];
   DeviceFrame frames[PIPS_DEVICE_FRAMES_MAX];
-  std::int32_t sp = 0; // number of values on stack
-  std::int32_t fp = 0; // number of active frames
+  std::int32_t sp = 0; 
+  std::int32_t fp = 0; 
 
-  // Reads a big-endian unsigned 16-bit value at module.code[ip] without
-  // advancing ip; the caller advances.
-  PIPS_DEVICE_HOST static std::uint16_t read_u16(const std::uint8_t *code,
-                                                 std::uint32_t ip) {
-    return static_cast<std::uint16_t>((code[ip] << 8) | code[ip + 1]);
-  }
-
-  PIPS_DEVICE_HOST bool push(const DeviceValue &v) {
+  PIPS_DEVICE_HOST_INLINE bool push(const DeviceValue &v) {
     if (sp >= PIPS_DEVICE_STACK_MAX) return false;
     stack[sp++] = v;
     return true;
   }
-  PIPS_DEVICE_HOST DeviceValue pop() { return stack[--sp]; }
-  PIPS_DEVICE_HOST const DeviceValue &peek(int back) const {
+  PIPS_DEVICE_HOST_INLINE DeviceValue pop() { return stack[--sp]; }
+  PIPS_DEVICE_HOST_INLINE const DeviceValue &peek(int back) const {
     return stack[sp - 1 - back];
   }
 
@@ -61,13 +55,13 @@ struct DeviceVM {
     sp = 0;
     fp = 0;
     if (entry_id >= module.function_count) return DeviceStatus::BAD_FUNCTION_ID;
+
     const DeviceFunction &entry = module.functions[entry_id];
     if (argc != entry.arity) return DeviceStatus::ARITY_MISMATCH;
-    // Push args onto the stack as locals 0..argc-1.
     for (std::uint32_t i = 0; i < argc; ++i) {
       if (!push(args[i])) return DeviceStatus::STACK_OVERFLOW;
     }
-    // Set up the entry frame.
+
     if (fp >= PIPS_DEVICE_FRAMES_MAX) return DeviceStatus::FRAME_OVERFLOW;
     frames[fp].func_id = entry_id;
     frames[fp].ip = entry.code_offset;
@@ -89,9 +83,6 @@ private:
     const DeviceValue *fconsts = module.constants + func->const_offset;
     std::uint32_t ip = frame->ip;
     std::uint32_t code_end = func->code_offset + func->code_size;
-
-    // Helpers as lambdas: only need to refresh `frame/func/fconsts/code_end`
-    // around function call/return. ip is kept in this stack variable.
 
     while (true) {
       if (ip >= code_end) return DeviceStatus::BAD_OPCODE;
@@ -308,7 +299,7 @@ private:
 
       case OC::GET_GLOBAL_ID: {
         if (ip + 1 >= code_end) return DeviceStatus::BAD_OPCODE;
-        std::uint16_t gid = read_u16(code, ip);
+        std::uint16_t gid = static_cast<std::uint16_t>((code[ip] << 8) | code[ip + 1]);
         ip += 2;
         if (gid >= module.global_count) return DeviceStatus::BAD_GLOBAL_ID;
         if (!push(module.globals[gid])) return DeviceStatus::STACK_OVERFLOW;
@@ -317,7 +308,7 @@ private:
 
       case OC::JUMP_IF_FALSE: {
         if (ip + 1 >= code_end) return DeviceStatus::BAD_OPCODE;
-        std::uint16_t off = read_u16(code, ip);
+        std::uint16_t off = static_cast<std::uint16_t>((code[ip] << 8) | code[ip + 1]);
         ip += 2;
         if (sp < 1) return DeviceStatus::STACK_UNDERFLOW;
         if (dv_is_falsey(stack[sp - 1])) ip += off;
@@ -325,14 +316,14 @@ private:
       }
       case OC::JUMP: {
         if (ip + 1 >= code_end) return DeviceStatus::BAD_OPCODE;
-        std::uint16_t off = read_u16(code, ip);
+        std::uint16_t off = static_cast<std::uint16_t>((code[ip] << 8) | code[ip + 1]);
         ip += 2;
         ip += off;
         break;
       }
       case OC::LOOP: {
         if (ip + 1 >= code_end) return DeviceStatus::BAD_OPCODE;
-        std::uint16_t off = read_u16(code, ip);
+        std::uint16_t off = static_cast<std::uint16_t>((code[ip] << 8) | code[ip + 1]);
         ip += 2;
         ip -= off;
         break;
@@ -340,20 +331,20 @@ private:
 
       case OC::CALL_ID: {
         if (ip + 2 >= code_end) return DeviceStatus::BAD_OPCODE;
-        std::uint16_t fid = read_u16(code, ip);
+        std::uint16_t fid = static_cast<std::uint16_t>((code[ip] << 8) | code[ip + 1]);
         ip += 2;
         std::uint8_t argc = code[ip++];
         if (fid >= module.function_count) return DeviceStatus::BAD_FUNCTION_ID;
         const DeviceFunction &callee = module.functions[fid];
         if (argc != callee.arity) return DeviceStatus::ARITY_MISMATCH;
         if (fp >= PIPS_DEVICE_FRAMES_MAX) return DeviceStatus::FRAME_OVERFLOW;
-        // Save caller's ip back into its frame.
+
         frame->ip = ip;
-        // Set up callee frame; arguments are already at the top of the stack.
         frames[fp].func_id = fid;
         frames[fp].ip = callee.code_offset;
         frames[fp].frame_base = static_cast<std::uint32_t>(sp) - argc;
         fp++;
+
         frame = &frames[fp - 1];
         func = &callee;
         fconsts = module.constants + func->const_offset;
@@ -364,14 +355,12 @@ private:
       case OC::RETURN: {
         if (sp < 1) return DeviceStatus::STACK_UNDERFLOW;
         DeviceValue result = stack[--sp];
-        // Drop callee's locals.
         sp = static_cast<std::int32_t>(frame->frame_base);
         fp--;
         if (fp == 0) {
           if (out_result) *out_result = result;
           return DeviceStatus::OK;
         }
-        // Push the return value onto the caller's stack.
         if (!push(result)) return DeviceStatus::STACK_OVERFLOW;
         frame = &frames[fp - 1];
         func = &module.functions[frame->func_id];

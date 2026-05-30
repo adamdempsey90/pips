@@ -6,8 +6,6 @@
 namespace pips {
 namespace device {
 
-// Status codes returned from DeviceVM::run. No exceptions are thrown on
-// the device path; the caller inspects the status code.
 enum class DeviceStatus : std::uint8_t {
   OK = 0,
   STACK_OVERFLOW,
