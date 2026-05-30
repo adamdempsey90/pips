@@ -129,7 +129,41 @@ void test_globals_and_class_member() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3: writing a global is rejected.
+// Test 3: constant-index global vector reads are lowered to scalar globals.
+// ---------------------------------------------------------------------------
+void test_global_vector_element_read() {
+  pips::VM vm;
+  const char *src =
+      "var v = [10, 20, 30];\n"
+      "fn pick() { return v[1] + v[2]; }\n";
+  auto r = vm.interpret(src);
+  expect_ok("test3.interpret", r == pips::InterpretResult::OK);
+
+  dv::DeviceModuleStorage store;
+  std::uint32_t entry_id = 0;
+  std::string err;
+  bool ok = dv::pack_function(vm, "pick", store, entry_id, err);
+  expect_ok("test3.pack", ok, err);
+  if (!ok) return;
+
+  expect_ok("test3.global_count",
+            store.globals.size() == 2,
+            "expected 2 globals, got " + std::to_string(store.globals.size()));
+
+  dv::DeviceVM dvm;
+  dv::DeviceValue result{};
+  auto st = dvm.run(store.view(), entry_id, nullptr, 0, &result);
+  expect_ok("test3.run", st == dv::DeviceStatus::OK,
+            "status = " + std::to_string(static_cast<int>(st)));
+  if (st != dv::DeviceStatus::OK) return;
+
+  double got = static_cast<double>(dv::dv_as_number(result));
+  expect_ok("test3.value", approx_eq(got, 50.0),
+            "got " + std::to_string(got));
+}
+
+// ---------------------------------------------------------------------------
+// Test 4: writing a global is rejected.
 // ---------------------------------------------------------------------------
 void test_reject_global_write() {
   pips::VM vm;
@@ -143,12 +177,30 @@ void test_reject_global_write() {
   std::uint32_t entry_id = 0;
   std::string err;
   bool ok = dv::pack_function(vm, "bump", store, entry_id, err);
-  expect_ok("test3.reject", !ok && err.find("read-only") != std::string::npos,
+  expect_ok("test4.reject", !ok && err.find("read-only") != std::string::npos,
             "expected read-only-globals error, got: " + err);
 }
 
 // ---------------------------------------------------------------------------
-// Test 4: using print() is rejected.
+// Test 5: dynamic vector indexing is still rejected.
+// ---------------------------------------------------------------------------
+void test_reject_dynamic_vector_index() {
+  pips::VM vm;
+  const char *src =
+      "var v = [10, 20, 30];\n"
+      "fn pick(i) { return v[i]; }\n";
+  auto r = vm.interpret(src);
+  expect_ok("test5.interpret", r == pips::InterpretResult::OK);
+  dv::DeviceModuleStorage store;
+  std::uint32_t entry_id = 0;
+  std::string err;
+  bool ok = dv::pack_function(vm, "pick", store, entry_id, err);
+  expect_ok("test5.reject", !ok,
+            "expected packer to reject dynamic vector indexing: " + err);
+}
+
+// ---------------------------------------------------------------------------
+// Test 6: using print() is rejected.
 // ---------------------------------------------------------------------------
 void test_reject_print() {
   pips::VM vm;
@@ -168,7 +220,7 @@ void test_reject_print() {
   std::uint32_t entry_id = 0;
   std::string err;
   bool ok = dv::pack_function(vm, "shout", store, entry_id, err);
-  expect_ok("test4.reject", !ok,
+  expect_ok("test6.reject", !ok,
             "expected packer to reject print(): " + err);
 }
 
@@ -177,7 +229,9 @@ void test_reject_print() {
 int main() {
   test_pure_numeric();
   test_globals_and_class_member();
+  test_global_vector_element_read();
   test_reject_global_write();
+  test_reject_dynamic_vector_index();
   test_reject_print();
 
   std::printf("---\n");
