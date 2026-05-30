@@ -20,13 +20,15 @@ This path exists for GPU execution, not for the full dynamic runtime. The device
 - Numbers and booleans
 - Named function calls
 - Read-only globals
+- Constant-index reads from read-only global vectors, for example `v[0]`
 - Class data members when they can be resolved through a global instance, for example `cfg.x`
 - Arithmetic, comparisons, branching, and the current reduced math opcode set
 
 ## Current limitations
 
 - Device values support only `nil`, `bool`, and `number`
-- Strings, vectors, general instances, allocation, and printing are not device-runtime features
+- Strings, general vector values, general instances, allocation, and printing are not device-runtime features
+- Global vectors are only supported when the packer can lower a constant-index read such as `v[1]` into a scalar device global slot; dynamic indexing, slicing, mutation, and vector-valued device locals are not supported
 - Globals are read-only from the device packer's point of view; code that writes globals is rejected
 - The entry point must be a named compiled function present in the host VM
 - The packer only accepts bytecode patterns it knows how to lower into the reduced device opcode set
@@ -94,6 +96,7 @@ int main() {
 For globals:
 
 - Plain globals such as `bias` become entries in the packed module's `globals` array
+- Constant-index reads from global vectors such as `v[2]` are folded into scalar entries in that same `globals` array
 - Class-member reads such as `cfg.x` are folded into device globals when `cfg` is a global instance with host-known field values
 
 That is why a device function can still read script-level configuration stored in globals or in class data members, while remaining allocation-free on the GPU.
