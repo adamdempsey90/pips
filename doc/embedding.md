@@ -1,6 +1,6 @@
 # Embedding From C++
 
-See also [Language guide](language.md), [Running code](running.md), and [Examples](examples.md).
+See also [Language guide](language.md), [Calling functions on device](device.md), [Running code](running.md), and [Examples](examples.md).
 
 ## Overview
 
@@ -93,10 +93,6 @@ if (IS_STRING(result)) {
 
 `call()` works with functions that have already been compiled into the VM's function table.
 
-### No true shipped closures
-
-Nested functions are not standalone closure objects in the current runtime. A nested function that accesses outer locals still depends on an active enclosing call stack frame, so it cannot be extracted and shipped around like a self-contained callable.
-
 ### `nil` is also the failure sentinel
 
 At the moment, `call()` returns `nil` both for a legitimate `nil` result and for lookup/arity/runtime failures after printing an error message to stderr. If host code needs to distinguish those cases, the API will need an additional status channel.
@@ -104,6 +100,10 @@ At the moment, `call()` returns `nil` both for a legitimate `nil` result and for
 ### Methods are different
 
 This API is for calling named functions. It is not a direct host API for instance methods.
+
+### Calling functions from device
+
+To call from functions from device, a device VM is required. See [Calling functions on device](device.md) for more details.
 
 ## Practical guidance
 

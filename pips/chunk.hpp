@@ -117,6 +117,10 @@ struct Chunk {
   }
 
   int addConstant(Value val) {
+    // re-use an existing slot when the value matches
+    for (std::size_t i = 0; i < constants.size(); ++i) {
+      if (valuesEqual(constants[i], val)) return static_cast<int>(i);
+    }
     constants.push_back(val);
     return constants.size() - 1;
   }

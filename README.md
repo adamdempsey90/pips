@@ -18,6 +18,7 @@ This project is very much a work in progress.
 - [Documentation index](doc/README.md)
 - [Language guide](doc/language.md)
 - [Embedding from C++](doc/embedding.md)
+- [Calling functions on device](doc/device.md)
 - [Running code](doc/running.md)
 - [Examples](doc/examples.md)
 
@@ -30,4 +31,23 @@ To compile, execute:
 mkdir build && cd build
 cmake .. && make
 ./repl/repl
+```
+
+## Installing
+
+As a header-only library, `pipslib` can be installed directly with CMake:
+
+```bash
+cmake -S . -B build
+cmake --build build
+cmake --install build --prefix /usr/local
+```
+
+That installs the public headers under `include/pips/` and the package config files under `lib/cmake/pipslib/` or the platform-equivalent GNU install directories.
+
+Downstream CMake projects can then use:
+
+```cmake
+find_package(pipslib CONFIG REQUIRED)
+target_link_libraries(your_target PRIVATE pipslib::pipslib)
 ```

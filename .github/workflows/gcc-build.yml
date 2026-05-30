@@ -25,3 +25,6 @@ jobs:
 
       - name: Check stack limit runtime error
         run: sh ./scripts/test_stack_limit.sh ./build/ci-build/repl/repl
+
+      - name: Run device VM smoke test
+        run: ctest --test-dir build/ci-build --output-on-failure

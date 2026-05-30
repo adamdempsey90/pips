@@ -269,12 +269,22 @@ struct VM {
       return InterpretResult::OK;
     }
     VectorObject *out = newVector();
-    auto numericElem = [&](const Value &v, Real &r) -> bool {
-      if (!IS_NUMBER(v)) {
-        runtimeError("Vector arithmetic requires numeric elements.");
+    // Combine two elements (or a scalar with an element) according to op.
+    auto combine = [&](const Value &x, const Value &y, Value &result) -> bool {
+      if (op == '+' && IS_STRING(x) && IS_STRING(y)) {
+        result = STRING_VAL(newString(AS_STD_STRING(x) + AS_STD_STRING(y)));
+        return true;
+      }
+      if (!IS_NUMBER(x) || !IS_NUMBER(y)) {
+        if (op == '+')
+          runtimeError("Vector '+' requires numeric or string operands.");
+        else
+          runtimeError("Vector arithmetic requires numeric elements.");
         return false;
       }
-      r = AS_NUMBER(v);
+      Real r;
+      applyScalarOp(AS_NUMBER(x), AS_NUMBER(y), op, r);
+      result = NUMBER_VAL(r);
       return true;
     };
     if (av && bv) {
@@ -286,41 +296,28 @@ struct VM {
       }
       out->elements.reserve(ae.size());
       for (size_t i = 0; i < ae.size(); ++i) {
-        Real ax, bx, r;
-        if (!numericElem(ae[i], ax) || !numericElem(be[i], bx))
+        Value r;
+        if (!combine(ae[i], be[i], r))
           return InterpretResult::RUNTIME_ERROR;
-        applyScalarOp(ax, bx, op, r);
-        out->elements.push_back(NUMBER_VAL(r));
+        out->elements.push_back(r);
       }
     } else if (av) {
-      if (!IS_NUMBER(b)) {
-        runtimeError("Vector arithmetic requires a numeric scalar.");
-        return InterpretResult::RUNTIME_ERROR;
-      }
-      Real bn = AS_NUMBER(b);
       auto &ae = AS_VECTOR(a)->elements;
       out->elements.reserve(ae.size());
       for (const auto &e : ae) {
-        Real ax, r;
-        if (!numericElem(e, ax))
+        Value r;
+        if (!combine(e, b, r))
           return InterpretResult::RUNTIME_ERROR;
-        applyScalarOp(ax, bn, op, r);
-        out->elements.push_back(NUMBER_VAL(r));
+        out->elements.push_back(r);
       }
     } else {
-      if (!IS_NUMBER(a)) {
-        runtimeError("Vector arithmetic requires a numeric scalar.");
-        return InterpretResult::RUNTIME_ERROR;
-      }
-      Real an = AS_NUMBER(a);
       auto &be = AS_VECTOR(b)->elements;
       out->elements.reserve(be.size());
       for (const auto &e : be) {
-        Real bx, r;
-        if (!numericElem(e, bx))
+        Value r;
+        if (!combine(a, e, r))
           return InterpretResult::RUNTIME_ERROR;
-        applyScalarOp(an, bx, op, r);
-        out->elements.push_back(NUMBER_VAL(r));
+        out->elements.push_back(r);
       }
     }
     push(VECTOR_VAL(out));
