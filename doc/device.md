@@ -1,7 +1,6 @@
 # Calling Functions On Device
 
-See also [Embedding from C++](embedding.md), [Examples](examples.md), and the runnable GPU examples in `examples/device_gpu_test.cu`, `examples/device_gpu_test.hip`, and `examples/device_gpu_test_common.hpp`.
-
+See also [Embedding from C++](embedding.md), [Examples](examples.md), and the runnable GPU examples in `examples/gpu_example.cpp`.
 ## Overview
 
 `pips` has a device-oriented execution path for a restricted subset of the VM.
@@ -84,8 +83,6 @@ int main() {
   }
 
   pips::device::DeviceModule host_view = storage.view();
-  (void)entry_id;
-  (void)host_view;
   return 0;
 }
 ```
@@ -188,35 +185,4 @@ This is the pattern used by the repository's standalone GPU examples.
 
 ## CUDA and HIP example programs
 
-The repository includes one minimal program per runtime:
-
-- `examples/device_gpu_test.cu`
-- `examples/device_gpu_test.hip`
-
-Both include the shared harness in `examples/device_gpu_test_common.hpp`.
-
-Example compile commands:
-
-```bash
-nvcc -std=c++17 -O2 -I . examples/device_gpu_test.cu -o device_gpu_test_cuda
-./device_gpu_test_cuda
-```
-
-```bash
-hipcc -std=c++17 -O2 -I . examples/device_gpu_test.hip -o device_gpu_test_hip
-./device_gpu_test_hip
-```
-
-Useful target flags when compiling on a real GPU machine:
-
-- CUDA: `-arch=sm_80` or whatever matches your GPU
-- HIP: `--offload-arch=gfx1100` or the architecture reported by `rocminfo`
-
-## Practical guidance
-
-- Keep the device entry function numeric and explicit
-- Treat globals as read-only configuration
-- Use host code to allocate and upload the packed tables
-- Construct a fresh `DeviceVM` inside each thread that executes `run(...)`
-- Check `DeviceStatus` before decoding the returned value
-- Start from `examples/device_gpu_test_common.hpp` if you want a working template
+The repository includes one minimal example program, `examples/gpu_example.cpp`, that can be compiled with any CUDA/HIP compiler. 

@@ -163,12 +163,3 @@ print(v[2:]);
 v[1:3] = [7, 8];
 print(v);
 ```
-
-## Suggested order
-
-If you are learning the language from scratch, run the examples in this order:
-
-1. Expressions and built-ins
-2. Control flow and functions
-3. Classes and dynamic attributes
-4. Vectors and slicing
