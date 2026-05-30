@@ -21,7 +21,6 @@
 #include "types.hpp"
 #include "utils.hpp"
 #include "value.hpp"
-#include "vm.hpp"
 
 namespace pips {
 // #define DEBUG_PRINT_CODE
