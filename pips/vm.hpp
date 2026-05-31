@@ -520,6 +520,185 @@ struct VM {
         STD_BINARY_OP(std::max, NUMBER_VAL);
         break;
       }
+      case OpCode::RANGE: {
+        std::uint8_t count = *ip++;
+        Real start = 0.0L, stop, step = 1.0L;
+        if (count == 3) {
+          Value sv = pop();
+          if (!IS_NUMBER(sv)) {
+            runtimeError("range() step must be a number.");
+            return InterpretResult::RUNTIME_ERROR;
+          }
+          step = AS_NUMBER(sv);
+          Value stopV = pop();
+          if (!IS_NUMBER(stopV)) {
+            runtimeError("range() stop must be a number.");
+            return InterpretResult::RUNTIME_ERROR;
+          }
+          stop = AS_NUMBER(stopV);
+          Value startV = pop();
+          if (!IS_NUMBER(startV)) {
+            runtimeError("range() start must be a number.");
+            return InterpretResult::RUNTIME_ERROR;
+          }
+          start = AS_NUMBER(startV);
+        } else if (count == 2) {
+          Value stopV = pop();
+          if (!IS_NUMBER(stopV)) {
+            runtimeError("range() stop must be a number.");
+            return InterpretResult::RUNTIME_ERROR;
+          }
+          stop = AS_NUMBER(stopV);
+          Value startV = pop();
+          if (!IS_NUMBER(startV)) {
+            runtimeError("range() start must be a number.");
+            return InterpretResult::RUNTIME_ERROR;
+          }
+          start = AS_NUMBER(startV);
+        } else {
+          Value stopV = pop();
+          if (!IS_NUMBER(stopV)) {
+            runtimeError("range() stop must be a number.");
+            return InterpretResult::RUNTIME_ERROR;
+          }
+          stop = AS_NUMBER(stopV);
+          start = 0.0L;
+        }
+        if (step == 0.0L) {
+          runtimeError("range() step must be non-zero.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        VectorObject *vec = newVector();
+        if (step > 0.0L) {
+          for (Real v = start; v < stop; v += step) {
+            vec->elements.push_back(NUMBER_VAL(v));
+          }
+        } else {
+          for (Real v = start; v > stop; v += step) {
+            vec->elements.push_back(NUMBER_VAL(v));
+          }
+        }
+        if (!push(VECTOR_VAL(vec)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::LINSPACE: {
+        Value countV = pop();
+        Value stopV  = pop();
+        Value startV = pop();
+        if (!IS_NUMBER(startV) || !IS_NUMBER(stopV) || !IS_NUMBER(countV)) {
+          runtimeError("linspace() arguments must be numbers.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        std::int64_t n = static_cast<std::int64_t>(AS_NUMBER(countV));
+        if (n < 0) {
+          runtimeError("linspace() count must be non-negative.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        VectorObject *vec = newVector();
+        if (n == 1) {
+          vec->elements.push_back(startV);
+        } else if (n > 1) {
+          Real s = AS_NUMBER(startV);
+          Real e = AS_NUMBER(stopV);
+          vec->elements.reserve(static_cast<size_t>(n));
+          for (std::int64_t i = 0; i < n; ++i) {
+            Real v = s + static_cast<Real>(i) * (e - s) / static_cast<Real>(n - 1);
+            vec->elements.push_back(NUMBER_VAL(v));
+          }
+        }
+        if (!push(VECTOR_VAL(vec)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::LOGSPACE: {
+        Value countV = pop();
+        Value stopV  = pop();
+        Value startV = pop();
+        if (!IS_NUMBER(startV) || !IS_NUMBER(stopV) || !IS_NUMBER(countV)) {
+          runtimeError("logspace() arguments must be numbers.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        std::int64_t n = static_cast<std::int64_t>(AS_NUMBER(countV));
+        if (n < 0) {
+          runtimeError("logspace() count must be non-negative.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        VectorObject *vec = newVector();
+        if (n > 0) {
+          Real s = AS_NUMBER(startV);
+          Real e = AS_NUMBER(stopV);
+          vec->elements.reserve(static_cast<size_t>(n));
+          for (std::int64_t i = 0; i < n; ++i) {
+            Real exponent = (n == 1) ? s : s + static_cast<Real>(i) * (e - s) / static_cast<Real>(n - 1);
+            vec->elements.push_back(NUMBER_VAL(std::exp(exponent)));
+          }
+        }
+        if (!push(VECTOR_VAL(vec)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::LOG10SPACE: {
+        Value countV = pop();
+        Value stopV  = pop();
+        Value startV = pop();
+        if (!IS_NUMBER(startV) || !IS_NUMBER(stopV) || !IS_NUMBER(countV)) {
+          runtimeError("log10space() arguments must be numbers.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        std::int64_t n = static_cast<std::int64_t>(AS_NUMBER(countV));
+        if (n < 0) {
+          runtimeError("log10space() count must be non-negative.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        VectorObject *vec = newVector();
+        if (n > 0) {
+          Real s = AS_NUMBER(startV);
+          Real e = AS_NUMBER(stopV);
+          vec->elements.reserve(static_cast<size_t>(n));
+          for (std::int64_t i = 0; i < n; ++i) {
+            Real exponent = (n == 1) ? s : s + static_cast<Real>(i) * (e - s) / static_cast<Real>(n - 1);
+            vec->elements.push_back(NUMBER_VAL(std::pow(static_cast<Real>(10), exponent)));
+          }
+        }
+        if (!push(VECTOR_VAL(vec)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::ZEROS: {
+        Value countV = pop();
+        if (!IS_NUMBER(countV)) {
+          runtimeError("zeros() argument must be a number.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        std::int64_t n = static_cast<std::int64_t>(AS_NUMBER(countV));
+        if (n < 0) {
+          runtimeError("zeros() count must be non-negative.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        VectorObject *vec = newVector();
+        vec->elements.assign(static_cast<size_t>(n), NUMBER_VAL(0.0L));
+        if (!push(VECTOR_VAL(vec)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
+      case OpCode::ONES: {
+        Value countV = pop();
+        if (!IS_NUMBER(countV)) {
+          runtimeError("ones() argument must be a number.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        std::int64_t n = static_cast<std::int64_t>(AS_NUMBER(countV));
+        if (n < 0) {
+          runtimeError("ones() count must be non-negative.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        VectorObject *vec = newVector();
+        vec->elements.assign(static_cast<size_t>(n), NUMBER_VAL(1.0L));
+        if (!push(VECTOR_VAL(vec)))
+          return InterpretResult::RUNTIME_ERROR;
+        break;
+      }
       case OpCode::CEIL: {
         if (!IS_NUMBER(peek(0))) {
           runtimeError("Operand must be a number");

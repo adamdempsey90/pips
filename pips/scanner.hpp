@@ -99,6 +99,14 @@ enum class TokenType : unsigned int {
   MIN,
   MAX,
 
+  // vector generator builtins
+  RANGE,
+  LINSPACE,
+  LOGSPACE,
+  LOG10SPACE,
+  ZEROS,
+  ONES,
+
   // compound assignment operators
   PLUS_PLUS,
   MINUS_MINUS,
@@ -305,8 +313,14 @@ struct Scanner {
     case 'l': {
       if (current - start > 1) {
         switch (start[1]) {
+        case 'i':
+          return checkKeyword(2, 6, "nspace", TokenType::LINSPACE);
         case 'o': {
-          if (matchKeyword(2, 3, "g10"))
+          if (matchKeyword(2, 8, "g10space"))
+            return TokenType::LOG10SPACE;
+          else if (matchKeyword(2, 6, "gspace"))
+            return TokenType::LOGSPACE;
+          else if (matchKeyword(2, 3, "g10"))
             return TokenType::LOG10;
           else if (matchKeyword(2, 1, "g"))
             return TokenType::LOG;
@@ -364,8 +378,17 @@ struct Scanner {
         }
       }
       break;
-    case 'o':
-      return checkKeyword(1, 1, "r", TokenType::OR);
+    case 'o': {
+      if (current - start > 1) {
+        switch (start[1]) {
+        case 'r':
+          return (current - start == 2) ? TokenType::OR : TokenType::IDENTIFIER;
+        case 'n':
+          return checkKeyword(2, 2, "es", TokenType::ONES);
+        }
+      }
+      break;
+    }
     case 'p': {
       if (current - start > 1) {
         switch (start[1]) {
@@ -377,8 +400,17 @@ struct Scanner {
       }
       break;
     }
-    case 'r':
-      return checkKeyword(1, 5, "eturn", TokenType::RETURN);
+    case 'r': {
+      if (current - start > 1) {
+        switch (start[1]) {
+        case 'e':
+          return checkKeyword(2, 4, "turn", TokenType::RETURN);
+        case 'a':
+          return checkKeyword(2, 3, "nge", TokenType::RANGE);
+        }
+      }
+      break;
+    }
     case 's': {
       if (current - start > 1) {
         switch (start[1]) {
@@ -419,6 +451,8 @@ struct Scanner {
 #endif
     case 'w':
       return checkKeyword(1, 4, "hile", TokenType::WHILE);
+    case 'z':
+      return checkKeyword(1, 4, "eros", TokenType::ZEROS);
     case 'x':
       return checkKeyword(1, 2, "or", TokenType::XOR);
       // default: return TokenType::STRING;

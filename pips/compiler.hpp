@@ -137,7 +137,7 @@ struct Compiler {
       Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 94> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 100> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -210,7 +210,13 @@ struct Compiler {
                                                         &Compiler::env,      // ENV
                                                         &Compiler::atan2,    // ATAN2
                                                         &Compiler::min,      // MIN
-                                                        &Compiler::max,      // MAX
+                                                        &Compiler::max,           // MAX
+                                                        &Compiler::rangeBuiltin,      // RANGE
+                                                        &Compiler::linspaceBuiltin,   // LINSPACE
+                                                        &Compiler::logspaceBuiltin,   // LOGSPACE
+                                                        &Compiler::log10spaceBuiltin, // LOG10SPACE
+                                                        &Compiler::zerosBuiltin,      // ZEROS
+                                                        &Compiler::onesBuiltin,       // ONES
                                                         &Compiler::preInc,   // PLUS_PLUS
                                                         &Compiler::preDec,   // MINUS_MINUS
                                                         nullptr,             // PLUS_EQUAL
@@ -232,7 +238,7 @@ struct Compiler {
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 94> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 100> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -306,6 +312,12 @@ struct Compiler {
                                                        nullptr,           // ATAN2
                                                        nullptr,           // MIN
                                                        nullptr,           // MAX
+                                                       nullptr,           // RANGE
+                                                       nullptr,           // LINSPACE
+                                                       nullptr,           // LOGSPACE
+                                                       nullptr,           // LOG10SPACE
+                                                       nullptr,           // ZEROS
+                                                       nullptr,           // ONES
                                                        nullptr,           // PLUS_PLUS
                                                        nullptr,           // MINUS_MINUS
                                                        nullptr,           // PLUS_EQUAL
@@ -327,7 +339,7 @@ struct Compiler {
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 94> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 100> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -401,6 +413,12 @@ struct Compiler {
                                         Precedence::NONE,       // ATAN2
                                         Precedence::NONE,       // MIN
                                         Precedence::NONE,       // MAX                                       
+                                        Precedence::NONE,       // RANGE
+                                        Precedence::NONE,       // LINSPACE
+                                        Precedence::NONE,       // LOGSPACE
+                                        Precedence::NONE,       // LOG10SPACE
+                                        Precedence::NONE,       // ZEROS
+                                        Precedence::NONE,       // ONES
                                         Precedence::NONE,       // PLUS_PLUS
                                         Precedence::NONE,       // MINUS_MINUS
                                         Precedence::NONE,       // PLUS_EQUAL
@@ -967,6 +985,63 @@ struct Compiler {
   void max(bool tmp_) {
     binary_consume();
     emitByte(OpCode::MAX);
+  }
+  void rangeBuiltin(bool /*tmp_*/) {
+    parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'range'.");
+    std::uint8_t count = 0;
+    if (!check(TokenType::RIGHT_PAREN)) {
+      do {
+        if (count == 3) {
+          parser.error("range() takes at most 3 arguments.");
+        }
+        expression();
+        count++;
+      } while (match(TokenType::COMMA));
+    }
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after arguments to range.");
+    if (count == 0) {
+      parser.error("range() requires at least 1 argument.");
+    }
+    emitByte(OpCode::RANGE);
+    emitByte(count);
+  }
+  void linspaceBuiltin(bool /*tmp_*/) {
+    parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'linspace'.");
+    expression();
+    parser.consume(TokenType::COMMA, "Expect ',' in linspace(start, stop, count).");
+    expression();
+    parser.consume(TokenType::COMMA, "Expect ',' in linspace(start, stop, count).");
+    expression();
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after linspace arguments.");
+    emitByte(OpCode::LINSPACE);
+  }
+  void logspaceBuiltin(bool /*tmp_*/) {
+    parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'logspace'.");
+    expression();
+    parser.consume(TokenType::COMMA, "Expect ',' in logspace(start, stop, count).");
+    expression();
+    parser.consume(TokenType::COMMA, "Expect ',' in logspace(start, stop, count).");
+    expression();
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after logspace arguments.");
+    emitByte(OpCode::LOGSPACE);
+  }
+  void log10spaceBuiltin(bool /*tmp_*/) {
+    parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'log10space'.");
+    expression();
+    parser.consume(TokenType::COMMA, "Expect ',' in log10space(start, stop, count).");
+    expression();
+    parser.consume(TokenType::COMMA, "Expect ',' in log10space(start, stop, count).");
+    expression();
+    parser.consume(TokenType::RIGHT_PAREN, "Expect ')' after log10space arguments.");
+    emitByte(OpCode::LOG10SPACE);
+  }
+  void zerosBuiltin(bool /*tmp_*/) {
+    parsePrecedence(Precedence::UNARY);
+    emitByte(OpCode::ZEROS);
+  }
+  void onesBuiltin(bool /*tmp_*/) {
+    parsePrecedence(Precedence::UNARY);
+    emitByte(OpCode::ONES);
   }
   void setAttr(bool tmp_) {
     parser.consume(TokenType::LEFT_PAREN, "Expect '(' after 'setattr'.");
