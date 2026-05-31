@@ -105,6 +105,27 @@ enum class InterpretResult { OK, COMPILE_ERROR, RUNTIME_ERROR };
     }                                                                          \
   } while (false)
 
+#define UNARY_OP(func)                                                         \
+  do {                                                                         \
+    if (!IS_NUMBER(peek(0)) && !IS_VECTOR(peek(0))) {                          \
+      runtimeError("Operand must be a number or a vector.");                   \
+      return InterpretResult::RUNTIME_ERROR;                                   \
+    }                                                                          \
+    if (IS_NUMBER(peek(0))) {                                                  \
+      push(NUMBER_VAL(func(AS_NUMBER(pop()))));                                \
+    } else {                                                                   \
+      VectorObject *vec = AS_VECTOR(pop());                                    \
+      VectorObject *result = newVector();                                      \
+      for (const auto &e : vec->elements) {                                    \
+        if (!IS_NUMBER(e)) {                                                   \
+          runtimeError("Vector operand must contain only numbers.");           \
+          return InterpretResult::RUNTIME_ERROR;                               \
+        }                                                                      \
+        result->elements.push_back(NUMBER_VAL(func(AS_NUMBER(e))));            \
+      }                                                                        \
+      push(VECTOR_VAL(result));                                                \
+    }                                                                          \
+  } while (false)
 struct VM {
   Chunk *chunk = nullptr;
   std::uint8_t *ip = nullptr;
@@ -382,130 +403,59 @@ struct VM {
       std::uint8_t instruction = (*ip++);
       switch (instruction) {
       case OpCode::NEGATE: {
-        if (IS_VECTOR(peek(0))) {
-          VectorObject *src = AS_VECTOR(pop());
-          VectorObject *out = newVector();
-          out->elements.reserve(src->elements.size());
-          for (const auto &e : src->elements) {
-            if (!IS_NUMBER(e)) {
-              runtimeError("Vector negate requires numeric elements.");
-              return InterpretResult::RUNTIME_ERROR;
-            }
-            out->elements.push_back(NUMBER_VAL(-AS_NUMBER(e)));
-          }
-          push(VECTOR_VAL(out));
-          break;
-        }
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(-AS_NUMBER(pop())));
+        UNARY_OP([](Real x) { return -x; });
         break;
       }
       case OpCode::UPLUS: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(AS_NUMBER(pop())));
+        UNARY_OP([](Real x) { return x; });
         break;
       }
       case OpCode::EXP: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(std::exp(AS_NUMBER(pop()))));
+        UNARY_OP(std::exp);
         break;
       }
       case OpCode::SIN: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(pips::sin(AS_NUMBER(pop()))));
+        UNARY_OP(pips::sin);
         break;
       }
       case OpCode::COS: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(pips::cos(AS_NUMBER(pop()))));
+        UNARY_OP(pips::cos);
         break;
       }
       case OpCode::TAN: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(pips::tan(AS_NUMBER(pop()))));
+        UNARY_OP(pips::tan);
         break;
       }
       case OpCode::ABS: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(std::abs(AS_NUMBER(pop()))));
+        UNARY_OP(std::abs);
         break;
       }
       case OpCode::LOG: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(std::log(AS_NUMBER(pop()))));
+        UNARY_OP(std::log);
         break;
       }
       case OpCode::LOG10: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(std::log10(AS_NUMBER(pop()))));
+        UNARY_OP(std::log10);
         break;
       }
       case OpCode::SIGN: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        auto value = AS_NUMBER(pop());
-        push(NUMBER_VAL((value < 0.0 ? -1.0L : (value > 0.0 ? 1.0L : 0.0L))));
+        UNARY_OP([](Real x) { return (x > 0) - (x < 0); });
         break;
       }
       case OpCode::SQRT: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(std::sqrt(AS_NUMBER(pop()))));
+        UNARY_OP(std::sqrt);
         break;
       }
       case OpCode::ACOS: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(std::acos(AS_NUMBER(pop()))));
+        UNARY_OP(std::acos);
         break;
       }
       case OpCode::ASIN: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(std::asin(AS_NUMBER(pop()))));
+        UNARY_OP(std::asin);
         break;
       }
       case OpCode::ATAN: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(std::atan(AS_NUMBER(pop()))));
+        UNARY_OP(std::atan);
         break;
       }
       case OpCode::ATAN2: {
@@ -700,19 +650,11 @@ struct VM {
         break;
       }
       case OpCode::CEIL: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(std::ceil(AS_NUMBER(pop()))));
+        UNARY_OP(std::ceil);
         break;
       }
       case OpCode::FLOOR: {
-        if (!IS_NUMBER(peek(0))) {
-          runtimeError("Operand must be a number");
-          return InterpretResult::RUNTIME_ERROR;
-        }
-        push(NUMBER_VAL(std::floor(AS_NUMBER(pop()))));
+        UNARY_OP(std::floor);
         break;
       }
       case OpCode::ENV: {
