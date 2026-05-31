@@ -225,6 +225,76 @@ Binary numeric built-ins:
 
 `env(name)` looks up an environment variable and returns either a number or a string depending on its contents.
 
+## Vector generator built-ins
+
+These functions create a new vector without needing a literal.
+
+### `range`
+
+```pips
+range(stop)              # [0, 1, ..., stop-1]  (step = 1)
+range(start, stop)       # [start, ..., stop-1] (step = 1)
+range(start, stop, step) # [start, start+step, ...] stopping before stop
+```
+
+`step` may be negative; it must not be zero. All arguments are treated as
+numerics and need not be integers.
+
+```pips
+var a = range(5);              # [0, 1, 2, 3, 4]
+var b = range(2, 6);           # [2, 3, 4, 5]
+var c = range(0, 1, 0.25);     # [0, 0.25, 0.5, 0.75]
+var d = range(3, 0, -1);       # [3, 2, 1]
+```
+
+### `linspace`
+
+```pips
+linspace(start, stop, count)   # count evenly-spaced points from start to stop inclusive
+```
+
+```pips
+var t = linspace(0, 1, 5);     # [0, 0.25, 0.5, 0.75, 1]
+```
+
+`count = 0` returns an empty vector; `count = 1` returns `[start]`.
+
+### `logspace`
+
+```pips
+logspace(start, stop, count)   # count points: exp(linspace(start, stop, count))
+```
+
+Arguments are exponents in natural-log space. The resulting values are `e^start, ..., e^stop`.
+
+```pips
+var v = logspace(0, 1, 3);     # [1, e^0.5, e] ≈ [1, 1.6487, 2.7183]
+```
+
+### `log10space`
+
+```pips
+log10space(start, stop, count) # count points: 10^linspace(start, stop, count)
+```
+
+Arguments are exponents in base-10 space. The resulting values are `10^start, ..., 10^stop`.
+
+```pips
+var v = log10space(0, 3, 4);   # [1, 10, 100, 1000]
+```
+
+### `zeros` and `ones`
+
+```pips
+zeros(count)   # vector of count zeros
+ones(count)    # vector of count ones
+```
+
+```pips
+var z = zeros(4);   # [0, 0, 0, 0]
+var o = ones(3);    # [1, 1, 1]
+```
+
 ## Introspection helpers
 
 These are statement forms rather than functions:

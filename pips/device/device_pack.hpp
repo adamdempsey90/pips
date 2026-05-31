@@ -458,6 +458,12 @@ struct Packer {
       case OpCode::SET_INDEX:
       case OpCode::GET_SLICE:
       case OpCode::SET_SLICE:
+      case OpCode::RANGE:
+      case OpCode::LINSPACE:
+      case OpCode::LOGSPACE:
+      case OpCode::LOG10SPACE:
+      case OpCode::ZEROS:
+      case OpCode::ONES:
       case OpCode::DUP:
       case OpCode::PRINT:
       case OpCode::ENV:
