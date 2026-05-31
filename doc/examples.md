@@ -163,3 +163,37 @@ print(v[2:]);
 v[1:3] = [7, 8];
 print(v);
 ```
+
+## 5. Vector generators
+
+These examples exercise the built-in vector-generator functions added to the language.
+
+```pips
+# range: integer and fractional steps
+print(range(5));          # [0, 1, 2, 3, 4]
+print(range(2, 6));       # [2, 3, 4, 5]
+print(range(0, 1, 0.25)); # [0, 0.25, 0.5, 0.75]
+print(range(3, 0, -1));   # [3, 2, 1]
+
+# linspace: inclusive on both ends
+var t = linspace(0, 2 * pi, 5);
+print(t);                 # [0, pi/2, pi, 3*pi/2, 2*pi]
+
+# logspace: base-e (exponents in natural-log space)
+var e_grid = logspace(0, 1, 3);
+print(e_grid);            # [1, sqrt(e), e] ≈ [1, 1.6487, 2.7183]
+
+# log10space: base-10
+var decades = log10space(0, 3, 4);
+print(decades);           # [1, 10, 100, 1000]
+
+# zeros and ones
+print(zeros(4));          # [0, 0, 0, 0]
+print(ones(3));           # [1, 1, 1]
+
+# combine with arithmetic and indexing
+var v = linspace(0, 1, 5);
+var w = ones(5);
+print(v + w);             # [1, 1.25, 1.5, 1.75, 2]
+print(v[2]);              # 0.5
+```

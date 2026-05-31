@@ -1,0 +1,27 @@
+# Simple harmonic oscillator
+#
+# System:
+#   y0' =  y1        (velocity)
+#   y1' = -y0        (restoring force, omega=1)
+#
+# Initial condition:
+#   y0(0) = 1,  y1(0) = 0
+#
+# Exact solution:
+#   y0(t) = cos(t),  y1(t) = sin(t)
+#
+# Run:
+#   ./applications/ode_solver applications/sho.pips | head
+#
+# Verify by comparing y0 column with cos(t).
+
+var time_range = linspace(0, 2 * pi, 201);
+var dimension  = 2;
+
+fn initial_condition() {
+    return [1.0, 0.0];
+}
+
+fn rhs(t, y) {
+    return [y[1], -y[0]];
+}
