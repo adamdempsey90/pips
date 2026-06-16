@@ -13,6 +13,7 @@
 #include <cmath>
 #include <tuple>
 #include <unordered_map>
+#include <vector>
 
 #include "chunk.hpp"
 #include "function.hpp"
@@ -105,6 +106,13 @@ struct Local {
   int depth;
 };
 
+struct LoopContext {
+  int loopStart;             // LOOP target (for continue)
+  int localCountAtLoopEntry; // for break: pop down to here
+  int localCountAtBodyStart; // for continue: pop down to here
+  std::vector<int> breakPatches; // jump offsets to patch for break
+};
+
 enum class FunctionType { SCRIPT, FUNCTION };
 
 // Per-function compilation context
@@ -115,6 +123,7 @@ struct CompilerState {
   int localCount = 0;
   int scopeDepth = 0;
   CompilerState *enclosing = nullptr;
+  std::vector<LoopContext> loopStack;
 };
 
 struct Compiler {
@@ -137,7 +146,7 @@ struct Compiler {
       Precedence::EQUALITY,   Precedence::COMPARISON,
       Precedence::TERM,  Precedence::FACTOR,     Precedence::POWER,
       Precedence::UNARY, Precedence::CALL,       Precedence::PRIMARY};
-  std::array<void (Compiler::*)(bool), 100> prefix_rules{&Compiler::grouping, // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 102> prefix_rules{&Compiler::grouping, // LEFT_PAREN
                                                         nullptr,          // RIGHT_PAREN
                                                         nullptr,          // LEFT_BRACE
                                                         nullptr,          // RIGHT_BRACE
@@ -235,10 +244,12 @@ struct Compiler {
                                                         &Compiler::newExpr,  // NEW
                                                         &Compiler::vectorLiteral, // LEFT_BRACKET
                                                         nullptr,             // RIGHT_BRACKET
+                                                        nullptr,             // BREAK
+                                                        nullptr,             // CONTINUE
                                                         nullptr,             // ERROR
                                                         nullptr};            // END
 
-  std::array<void (Compiler::*)(bool), 100> infix_rules{nullptr,           // LEFT_PAREN
+  std::array<void (Compiler::*)(bool), 102> infix_rules{nullptr,           // LEFT_PAREN
                                                        nullptr,           // RIGHT_PAREN
                                                        nullptr,           // LEFT_BRACE
                                                        nullptr,           // RIGHT_BRACE
@@ -336,10 +347,12 @@ struct Compiler {
                                                        nullptr,           // NEW
                                                        &Compiler::subscript, // LEFT_BRACKET
                                                        nullptr,           // RIGHT_BRACKET
+                                                       nullptr,           // BREAK
+                                                       nullptr,           // CONTINUE
                                                        nullptr,           // ERROR
                                                        nullptr};          // END
 
-  std::array<Precedence, 100> prec_rules{Precedence::NONE,       // LEFT_PAREN
+  std::array<Precedence, 102> prec_rules{Precedence::NONE,       // LEFT_PAREN
                                         Precedence::NONE,       // RIGHT_PAREN
                                         Precedence::NONE,       // LEFT_BRACE
                                         Precedence::NONE,       // RIGHT_BRACE
@@ -437,6 +450,8 @@ struct Compiler {
                                         Precedence::NONE,       // NEW
                                         Precedence::CALL,       // LEFT_BRACKET
                                         Precedence::NONE,       // RIGHT_BRACKET
+                                        Precedence::NONE,       // BREAK
+                                        Precedence::NONE,       // CONTINUE
                                         Precedence::NONE,       // ERROR
                                         Precedence::NONE};      // END
   // clang-format on
@@ -1272,6 +1287,8 @@ struct Compiler {
       case TokenType::FOR:
       case TokenType::IF:
       case TokenType::WHILE:
+      case TokenType::BREAK:
+      case TokenType::CONTINUE:
       case TokenType::PRINT:
       case TokenType::LIST:
       case TokenType::GLOBALS:
@@ -1375,6 +1392,37 @@ struct Compiler {
       statement();
     patchJump(elseJump);
   }
+  void breakStatement() {
+    if (current->loopStack.empty()) {
+      parser.error("'break' outside of a loop.");
+      return;
+    }
+    LoopContext &ctx = current->loopStack.back();
+    // Pop all locals created since loop entry (init + body locals)
+    int localsToPop = current->localCount - ctx.localCountAtLoopEntry;
+    for (int i = 0; i < localsToPop; i++)
+      emitByte(OpCode::POP);
+    int jump = emitJump(OpCode::JUMP);
+    ctx.breakPatches.push_back(jump);
+    if (end_line == ';')
+      parser.consume(TokenType::SEMICOLON, "Expect ';' after 'break'.");
+  }
+
+  void continueStatement() {
+    if (current->loopStack.empty()) {
+      parser.error("'continue' outside of a loop.");
+      return;
+    }
+    LoopContext &ctx = current->loopStack.back();
+    // Pop only body locals (not init locals, which persist across iterations)
+    int localsToPop = current->localCount - ctx.localCountAtBodyStart;
+    for (int i = 0; i < localsToPop; i++)
+      emitByte(OpCode::POP);
+    emitLoop(ctx.loopStart);
+    if (end_line == ';')
+      parser.consume(TokenType::SEMICOLON, "Expect ';' after 'continue'.");
+  }
+
   void whileStatement() {
 
     int loopStart = currentChunk()->code.size();
@@ -1385,11 +1433,23 @@ struct Compiler {
 
     int exitJump = emitJump(OpCode::JUMP_IF_FALSE);
     emitByte(OpCode::POP);
+
+    LoopContext ctx;
+    ctx.loopStart = loopStart;
+    ctx.localCountAtLoopEntry = current->localCount;
+    ctx.localCountAtBodyStart = current->localCount;
+    current->loopStack.push_back(std::move(ctx));
+
     statement();
     emitLoop(loopStart);
 
     patchJump(exitJump);
     emitByte(OpCode::POP);
+
+    // Patch all break jumps to here (after loop exit pop)
+    for (int bp : current->loopStack.back().breakPatches)
+      patchJump(bp);
+    current->loopStack.pop_back();
   }
 
   void forStatement() {
@@ -1398,6 +1458,8 @@ struct Compiler {
     // Inside the for-clauses ';' is always the separator
     char saved_end_line = end_line;
     end_line = ';';
+
+    int localCountAtLoopEntry = current->localCount;
 
     if (match(TokenType::SEMICOLON)) {
       // no initializer
@@ -1428,13 +1490,27 @@ struct Compiler {
       patchJump(bodyJump);
     }
     end_line = saved_end_line;
+
+    // Push loop context (loopStart is now its final value)
+    LoopContext ctx;
+    ctx.loopStart = loopStart;
+    ctx.localCountAtLoopEntry = localCountAtLoopEntry;
+    ctx.localCountAtBodyStart = current->localCount;
+    current->loopStack.push_back(std::move(ctx));
+
     statement();
     emitLoop(loopStart);
+
     if (exitJump != -1) {
       patchJump(exitJump);
       emitByte(OpCode::POP);
     }
     endScope();
+
+    // Patch all break jumps to here (after loop cleanup)
+    for (int bp : current->loopStack.back().breakPatches)
+      patchJump(bp);
+    current->loopStack.pop_back();
   }
 
   void endCompiler() {
@@ -1491,6 +1567,10 @@ struct Compiler {
       whileStatement();
     } else if (match(TokenType::FOR)) {
       forStatement();
+    } else if (match(TokenType::BREAK)) {
+      breakStatement();
+    } else if (match(TokenType::CONTINUE)) {
+      continueStatement();
     } else if (match(TokenType::RETURN)) {
       returnStatement();
     } else {

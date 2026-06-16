@@ -127,6 +127,8 @@ enum class TokenType : unsigned int {
   NEW,
   LEFT_BRACKET,
   RIGHT_BRACKET,
+  BREAK,
+  CONTINUE,
   ERROR,
   END
 };
@@ -263,12 +265,16 @@ struct Scanner {
       }
       break;
     }
+    case 'b':
+      return checkKeyword(1, 4, "reak", TokenType::BREAK);
     case 'c': {
       if (current - start > 1) {
         switch (start[1]) {
         case 'l':
           return checkKeyword(2, 3, "ass", TokenType::CLASS);
         case 'o':
+          if (matchKeyword(2, 6, "ntinue"))
+            return TokenType::CONTINUE;
           return checkKeyword(2, 1, "s", TokenType::COS);
         case 'e':
           return checkKeyword(2, 2, "il", TokenType::CEIL);
