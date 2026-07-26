@@ -19,6 +19,9 @@ enum class DeviceStatus : std::uint8_t {
   BAD_CONST_ID,
   BAD_LOCAL_SLOT,
   ARITY_MISMATCH,
+  INVALID_VECTOR,
+  INDEX_OUT_OF_RANGE,
+  VECTOR_LENGTH_MISMATCH,
 };
 
 } // namespace device

@@ -18,17 +18,25 @@ This path exists for GPU execution, not for the full dynamic runtime. The device
 ## What works on device today
 
 - Numbers and booleans
+- Fixed-capacity numeric vectors, including vector-valued arguments and returns
 - Named function calls
 - Read-only globals
-- Constant-index reads from read-only global vectors, for example `v[0]`
+- Read-only global vectors and runtime indexing, for example `v[i]`
 - Class data members when they can be resolved through a global instance, for example `cfg.x`
 - Arithmetic, comparisons, branching, and the current reduced math opcode set
 
+Device vectors store their elements directly inside `DeviceValue`; they never
+contain host or device pointers and require no allocation. Their runtime length
+cannot change. `PIPS_DEVICE_VECTOR_MAX` controls the inline capacity and
+defaults to 8. It must have the same value in every translation unit that
+creates, uploads, or executes device values.
+
 ## Current limitations
 
-- Device values support only `nil`, `bool`, and `number`
-- Strings, general vector values, general instances, allocation, and printing are not device-runtime features
-- Global vectors are only supported when the packer can lower a constant-index read such as `v[1]` into a scalar device global slot; dynamic indexing, slicing, mutation, and vector-valued device locals are not supported
+- Device vectors contain numbers only; mixed, string, boolean, and nested vectors are rejected
+- Strings, general instances, allocation, and printing are not device-runtime features
+- Vector mutation, slicing, resizing, and dynamic constructors such as `range`, `linspace`, `zeros`, and `ones` are not supported
+- Vector ordering, bitwise vector operations, and vector forms of `atan2`, `min`, `max`, and integer division are not supported
 - Globals are read-only from the device packer's point of view; code that writes globals is rejected
 - The entry point must be a named compiled function present in the host VM
 - The packer only accepts bytecode patterns it knows how to lower into the reduced device opcode set
@@ -51,6 +59,46 @@ The main types and functions are:
 - `pips::device::DeviceVM`: per-thread interpreter with fixed stack and frame storage
 - `pips::device::DeviceStatus`: execution status returned by `DeviceVM::run(...)`
 - `pips::device::pack_function(...)`: host-side packer for one named entry function
+
+## Fixed-capacity vectors
+
+Vector literals up to the configured capacity can be used as arguments,
+locals, globals, class fields, intermediate values, and function results:
+
+```cpp
+const char *src =
+    "fn make(x) { return [x, x + 1, x + 2]; }\n"
+    "fn scale(x) { var v = make(x); return 2 * v; }\n";
+```
+
+The device VM supports elementwise `+`, `-`, `*`, `/`, `%`, and power, with
+scalar/vector broadcasting in either operand order. Unary sign and the
+supported unary math functions operate elementwise. Equality compares vector
+lengths and elements and returns one boolean. Indexing accepts a runtime
+numeric index and supports the host VM's negative-index convention.
+
+Construct and inspect vector arguments/results from C++ with the device value
+helpers:
+
+```cpp
+pips::device::DeviceReal elements[] = {1, 2, 3};
+pips::device::DeviceValue argument;
+if (!pips::device::dv_vector(elements, 3, argument)) {
+  return 1;
+}
+
+// After DeviceVM::run(...):
+if (pips::device::dv_is_vector(result)) {
+  std::uint8_t n = pips::device::dv_vector_length(result);
+  auto first = pips::device::dv_vector_element(result, 0);
+}
+```
+
+A vector remains one VM stack value, so the existing call and return ABI needs
+no special result buffer. Increasing `PIPS_DEVICE_VECTOR_MAX` increases every
+`DeviceValue` and therefore the per-thread `DeviceVM` stack footprint. Define
+the macro before including any device headers if a different capacity is
+required.
 
 ## Host-side packing
 
@@ -99,7 +147,7 @@ For globals:
 - Constant-index reads from global vectors such as `v[2]` are folded into scalar entries in that same `globals` array
 - Class-member reads such as `cfg.x` are folded into device globals when `cfg` is a global instance with host-known field values
 
-That is why a device function can still read script-level configuration stored in globals or in class data members, while remaining allocation-free on the GPU.
+That is why a device function can still read script-level configuration stored in globals or in class data members, while remaining allocation-free on the GPU. Bounded numeric globals are packed whole, while constant-index reads can still be folded into scalar slots.
 
 ## Uploading the module to CUDA or HIP
 
@@ -182,7 +230,7 @@ After the kernel finishes:
 1. Copy the result array back to host memory
 2. Copy the status array back to host memory
 3. Verify every thread returned `DeviceStatus::OK`
-4. Decode the returned `DeviceValue` with `dv_is_number(...)`, `dv_as_number(...)`, and related helpers
+4. Decode the returned `DeviceValue` with `dv_is_number(...)`, `dv_as_number(...)`, `dv_is_vector(...)`, `dv_vector_length(...)`, and related helpers
 
 This is the pattern used by the repository's standalone GPU examples.
 
