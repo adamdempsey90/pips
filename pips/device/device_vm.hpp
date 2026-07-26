@@ -57,6 +57,7 @@ struct DeviceVM {
     const DeviceFunction &entry = module.functions[entry_id];
     if (argc != entry.arity) return DeviceStatus::ARITY_MISMATCH;
     for (std::uint32_t i = 0; i < argc; ++i) {
+      if (!dv_vector_is_valid(args[i])) return DeviceStatus::INVALID_VECTOR;
       if (!push(args[i])) return DeviceStatus::STACK_OVERFLOW;
     }
 
@@ -71,6 +72,62 @@ struct DeviceVM {
   }
 
 private:
+  PIPS_DEVICE_HOST_INLINE static DeviceStatus
+  scalar_arith(DeviceOpCode op, DeviceReal a, DeviceReal b, DeviceReal &out) {
+    switch (op) {
+    case DeviceOpCode::ADD: out = a + b; return DeviceStatus::OK;
+    case DeviceOpCode::SUB: out = a - b; return DeviceStatus::OK;
+    case DeviceOpCode::MUL: out = a * b; return DeviceStatus::OK;
+    case DeviceOpCode::DIV:
+      if (b == 0) return DeviceStatus::DIV_BY_ZERO;
+      out = a / b;
+      return DeviceStatus::OK;
+    case DeviceOpCode::MOD: {
+      long long ib = static_cast<long long>(b);
+      if (ib == 0) return DeviceStatus::DIV_BY_ZERO;
+      out = static_cast<DeviceReal>(static_cast<long long>(a) % ib);
+      return DeviceStatus::OK;
+    }
+    case DeviceOpCode::POW: out = std::pow(a, b); return DeviceStatus::OK;
+    default: return DeviceStatus::BAD_OPCODE;
+    }
+  }
+
+  PIPS_DEVICE_HOST_INLINE static DeviceStatus
+  vector_arith(DeviceOpCode op, const DeviceValue &a, const DeviceValue &b,
+               DeviceValue &out) {
+    const bool av = dv_is_vector(a);
+    const bool bv = dv_is_vector(b);
+    if ((!av && !dv_is_number(a)) || (!bv && !dv_is_number(b)))
+      return DeviceStatus::TYPE_ERROR;
+    if (!dv_vector_is_valid(a) || !dv_vector_is_valid(b))
+      return DeviceStatus::INVALID_VECTOR;
+
+    if (!av && !bv) {
+      DeviceReal result = 0;
+      DeviceStatus st = scalar_arith(op, a.as.n, b.as.n, result);
+      if (st == DeviceStatus::OK) out = dv_number(result);
+      return st;
+    }
+
+    std::uint8_t length = av ? a.as.vector.length : b.as.vector.length;
+    if (av && bv && a.as.vector.length != b.as.vector.length)
+      return DeviceStatus::VECTOR_LENGTH_MISMATCH;
+
+    DeviceValue result{};
+    result.type = DeviceValueType::VECTOR;
+    result.as.vector.length = length;
+    for (std::uint8_t i = 0; i < length; ++i) {
+      DeviceReal lhs = av ? a.as.vector.elements[i] : a.as.n;
+      DeviceReal rhs = bv ? b.as.vector.elements[i] : b.as.n;
+      DeviceStatus st = scalar_arith(
+          op, lhs, rhs, result.as.vector.elements[i]);
+      if (st != DeviceStatus::OK) return st;
+    }
+    out = result;
+    return DeviceStatus::OK;
+  }
+
   PIPS_DEVICE_HOST DeviceStatus dispatch(const DeviceModule &module,
                                          DeviceValue *out_result) {
     using OC = DeviceOpCode;
@@ -107,13 +164,23 @@ private:
       case OC::NEGATE: {
         if (sp < 1) return DeviceStatus::STACK_UNDERFLOW;
         DeviceValue &top = stack[sp - 1];
-        if (!dv_is_number(top)) return DeviceStatus::TYPE_ERROR;
-        top.as.n = -top.as.n;
+        if (dv_is_number(top)) {
+          top.as.n = -top.as.n;
+        } else if (dv_is_vector(top)) {
+          if (!dv_vector_is_valid(top)) return DeviceStatus::INVALID_VECTOR;
+          for (std::uint8_t i = 0; i < top.as.vector.length; ++i)
+            top.as.vector.elements[i] = -top.as.vector.elements[i];
+        } else {
+          return DeviceStatus::TYPE_ERROR;
+        }
         break;
       }
       case OC::UPLUS: {
         if (sp < 1) return DeviceStatus::STACK_UNDERFLOW;
-        if (!dv_is_number(stack[sp - 1])) return DeviceStatus::TYPE_ERROR;
+        if (!dv_is_number(stack[sp - 1]) && !dv_is_vector(stack[sp - 1]))
+          return DeviceStatus::TYPE_ERROR;
+        if (!dv_vector_is_valid(stack[sp - 1]))
+          return DeviceStatus::INVALID_VECTOR;
         break;
       }
       case OC::NOT: {
@@ -136,18 +203,19 @@ private:
     if (!push(dv_number(EXPR))) return DeviceStatus::STACK_OVERFLOW;           \
   } while (0)
 
-      case OC::ADD: DV_BIN_NUM(a + b); break;
-      case OC::SUB: DV_BIN_NUM(a - b); break;
-      case OC::MUL: DV_BIN_NUM(a * b); break;
-      case OC::DIV: {
+      case OC::ADD:
+      case OC::SUB:
+      case OC::MUL:
+      case OC::DIV:
+      case OC::MOD:
+      case OC::POW: {
         if (sp < 2) return DeviceStatus::STACK_UNDERFLOW;
-        if (!dv_is_number(stack[sp - 1]) || !dv_is_number(stack[sp - 2]))
-          return DeviceStatus::TYPE_ERROR;
-        DeviceReal b = stack[sp - 1].as.n;
-        DeviceReal a = stack[sp - 2].as.n;
-        if (b == 0) return DeviceStatus::DIV_BY_ZERO;
+        DeviceValue result{};
+        DeviceStatus st = vector_arith(op, stack[sp - 2], stack[sp - 1],
+                                       result);
+        if (st != DeviceStatus::OK) return st;
         sp -= 2;
-        if (!push(dv_number(a / b))) return DeviceStatus::STACK_OVERFLOW;
+        if (!push(result)) return DeviceStatus::STACK_OVERFLOW;
         break;
       }
       case OC::INTDIV: {
@@ -162,20 +230,6 @@ private:
         if (!push(dv_number(r))) return DeviceStatus::STACK_OVERFLOW;
         break;
       }
-      case OC::MOD: {
-        if (sp < 2) return DeviceStatus::STACK_UNDERFLOW;
-        if (!dv_is_number(stack[sp - 1]) || !dv_is_number(stack[sp - 2]))
-          return DeviceStatus::TYPE_ERROR;
-        long long b = static_cast<long long>(stack[sp - 1].as.n);
-        long long a = static_cast<long long>(stack[sp - 2].as.n);
-        if (b == 0) return DeviceStatus::DIV_BY_ZERO;
-        sp -= 2;
-        if (!push(dv_number(static_cast<DeviceReal>(a % b))))
-          return DeviceStatus::STACK_OVERFLOW;
-        break;
-      }
-      case OC::POW: DV_BIN_NUM(std::pow(a, b)); break;
-
       case OC::EQUAL: {
         if (sp < 2) return DeviceStatus::STACK_UNDERFLOW;
         DeviceValue b = stack[--sp];
@@ -186,6 +240,13 @@ private:
           case DeviceValueType::NIL: eq = true; break;
           case DeviceValueType::BOOL: eq = (a.as.b == b.as.b); break;
           case DeviceValueType::NUMBER: eq = (a.as.n == b.as.n); break;
+          case DeviceValueType::VECTOR:
+            if (!dv_vector_is_valid(a) || !dv_vector_is_valid(b))
+              return DeviceStatus::INVALID_VECTOR;
+            eq = a.as.vector.length == b.as.vector.length;
+            for (std::uint8_t i = 0; eq && i < a.as.vector.length; ++i)
+              eq = a.as.vector.elements[i] == b.as.vector.elements[i];
+            break;
           }
         }
         if (!push(dv_bool(eq))) return DeviceStatus::STACK_OVERFLOW;
@@ -242,10 +303,21 @@ private:
 #define DV_UN_NUM(EXPR)                                                        \
   do {                                                                         \
     if (sp < 1) return DeviceStatus::STACK_UNDERFLOW;                          \
-    if (!dv_is_number(stack[sp - 1])) return DeviceStatus::TYPE_ERROR;         \
-    DeviceReal a = stack[sp - 1].as.n;                                         \
-    (void)a;                                                                   \
-    stack[sp - 1] = dv_number(EXPR);                                           \
+    DeviceValue &top = stack[sp - 1];                                          \
+    if (dv_is_number(top)) {                                                   \
+      DeviceReal a = top.as.n;                                                 \
+      (void)a;                                                                 \
+      top = dv_number(EXPR);                                                   \
+    } else if (dv_is_vector(top)) {                                            \
+      if (!dv_vector_is_valid(top)) return DeviceStatus::INVALID_VECTOR;       \
+      for (std::uint8_t i = 0; i < top.as.vector.length; ++i) {                \
+        DeviceReal a = top.as.vector.elements[i];                              \
+        (void)a;                                                               \
+        top.as.vector.elements[i] = (EXPR);                                    \
+      }                                                                        \
+    } else {                                                                   \
+      return DeviceStatus::TYPE_ERROR;                                         \
+    }                                                                          \
   } while (0)
 
       case OC::EXP: DV_UN_NUM(std::exp(a)); break;
@@ -348,6 +420,46 @@ private:
         fconsts = module.constants + func->const_offset;
         ip = frame->ip;
         code_end = func->code_offset + func->code_size;
+        break;
+      }
+      case OC::BUILD_VECTOR: {
+        if (ip >= code_end) return DeviceStatus::BAD_OPCODE;
+        std::uint8_t count = code[ip++];
+        if (count > PIPS_DEVICE_VECTOR_MAX)
+          return DeviceStatus::INVALID_VECTOR;
+        if (sp < count) return DeviceStatus::STACK_UNDERFLOW;
+        DeviceValue result{};
+        result.type = DeviceValueType::VECTOR;
+        result.as.vector.length = count;
+        std::int32_t first = sp - count;
+        for (std::uint8_t i = 0; i < count; ++i) {
+          if (!dv_is_number(stack[first + i])) return DeviceStatus::TYPE_ERROR;
+          result.as.vector.elements[i] = stack[first + i].as.n;
+        }
+        sp = first;
+        if (!push(result)) return DeviceStatus::STACK_OVERFLOW;
+        break;
+      }
+      case OC::GET_INDEX: {
+        if (sp < 2) return DeviceStatus::STACK_UNDERFLOW;
+        DeviceValue index = stack[sp - 1];
+        DeviceValue vector = stack[sp - 2];
+        if (!dv_is_vector(vector)) return DeviceStatus::TYPE_ERROR;
+        if (!dv_vector_is_valid(vector)) return DeviceStatus::INVALID_VECTOR;
+        long long raw = 0;
+        if (dv_is_number(index))
+          raw = static_cast<long long>(index.as.n);
+        else if (dv_is_bool(index))
+          raw = index.as.b ? 1 : 0;
+        else
+          return DeviceStatus::TYPE_ERROR;
+        long long normalized = raw;
+        if (normalized < 0) normalized += vector.as.vector.length;
+        if (normalized < 0 || normalized >= vector.as.vector.length)
+          return DeviceStatus::INDEX_OUT_OF_RANGE;
+        sp -= 2;
+        if (!push(dv_number(vector.as.vector.elements[normalized])))
+          return DeviceStatus::STACK_OVERFLOW;
         break;
       }
       case OC::RETURN: {

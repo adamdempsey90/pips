@@ -5,7 +5,7 @@
 //   1. On the host, compile a small pips script that defines a class with
 //      data members, a few globals, a helper function `dot()` that reads
 //      both the class members and a plain global, and a top-level
-//      `poly(x)` that calls `dot()` and adds `x*x`.
+//      `poly(x)` that calls `dot()` and returns a numeric vector.
 //   2. Pack `poly` (and its transitive callee `dot`) into a flat
 //      `DeviceModule`.
 //   3. Copy the module's four byte/value tables to device memory and patch
@@ -14,9 +14,11 @@
 //      `DeviceVM` (per-thread stack) and runs `poly(tid)` against the
 //      uploaded module.
 //   5. Copy the per-thread `DeviceValue` results back and check each one
-//      against the expected `dot() + tid*tid` value computed on the host.
+//      against `[dot() + tid*tid, tid, bias]` computed on the host. The vector
+//      is inline and contains no host or device pointer.
 //
-// The kernel relies only on the device subset of pips (NUMBER + BOOL,
+// The kernel relies only on the device subset of pips (NUMBER + BOOL + bounded
+// numeric VECTOR,
 // arithmetic / comparison / math intrinsics, GET_LOCAL/SET_LOCAL, CALL_ID,
 // JUMP/LOOP, GET_GLOBAL_ID). No allocator, exceptions, or std::string is
 // touched from the device side.

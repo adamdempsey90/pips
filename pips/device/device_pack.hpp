@@ -38,6 +38,7 @@ inline int host_operand_size(OpCode op) {
   case OpCode::NEW_INSTANCE:
   case OpCode::GET_PROPERTY:
   case OpCode::SET_PROPERTY:
+  case OpCode::BUILD_VECTOR:
     return 1;
   case OpCode::GET_OUTER:
   case OpCode::SET_OUTER:
@@ -60,6 +61,17 @@ inline bool host_to_device_value(const Value &v, DeviceValue &out) {
   case ValueType::NUMBER:
     out = dv_number(static_cast<DeviceReal>(v.as.number));
     return true;
+  case ValueType::VECTOR: {
+    const VectorObject *vector = v.as.vector;
+    const std::size_t length = vector ? vector->elements.size() : 0;
+    if (length > PIPS_DEVICE_VECTOR_MAX) return false;
+    DeviceReal elements[PIPS_DEVICE_VECTOR_MAX]{};
+    for (std::size_t i = 0; i < length; ++i) {
+      if (vector->elements[i].type != ValueType::NUMBER) return false;
+      elements[i] = static_cast<DeviceReal>(vector->elements[i].as.number);
+    }
+    return dv_vector(elements, static_cast<std::uint32_t>(length), out);
+  }
   default:
     return false;
   }
@@ -127,7 +139,7 @@ struct Packer {
     DeviceValue dv;
     if (!host_to_device_value(*gv, dv))
       return fail("Global '" + name +
-                  "' is not a device-safe value (nil/bool/number).");
+                  "' is not a device-safe scalar or bounded numeric vector.");
     out_id = intern_global(name, dv);
     return true;
   }
@@ -221,6 +233,7 @@ struct Packer {
       EMIT_TRIVIAL,   // 1 byte opcode, no operand
       EMIT_CONST,     // CONSTANT with new local idx
       EMIT_LOCAL,     // GET_LOCAL/SET_LOCAL, copy slot byte
+      EMIT_VECTOR,    // BUILD_VECTOR, copy static element count
       EMIT_GLOBAL_ID, // GET_GLOBAL plain → GET_GLOBAL_ID
       FOLD_CLASSMEMBER, // GET_GLOBAL + GET_PROPERTY fold
       FOLD_VECTOR_ELEMENT, // GET_GLOBAL + CONSTANT + GET_INDEX fold.
@@ -320,6 +333,7 @@ struct Packer {
       case OpCode::MAX: map_simple(OC::MAX); break;
       case OpCode::POP: map_simple(OC::POP); break;
       case OpCode::RETURN: map_simple(OC::RETURN); break;
+      case OpCode::GET_INDEX: map_simple(OC::GET_INDEX); break;
 
       case OpCode::CONSTANT: {
         std::uint8_t new_idx = 0;
@@ -339,6 +353,17 @@ struct Packer {
         s.action = Action::EMIT_LOCAL;
         s.out_op = OC::SET_LOCAL;
         s.operand_extra = code[i + 1];
+        break;
+      }
+      case OpCode::BUILD_VECTOR: {
+        std::uint8_t count = code[i + 1];
+        if (count > PIPS_DEVICE_VECTOR_MAX)
+          return fail("Function '" + fn.name + "' builds a vector of " +
+                      std::to_string(count) + " elements; device capacity is " +
+                      std::to_string(PIPS_DEVICE_VECTOR_MAX) + ".");
+        s.action = Action::EMIT_VECTOR;
+        s.out_op = OC::BUILD_VECTOR;
+        s.operand_extra = count;
         break;
       }
       case OpCode::GET_GLOBAL: {
@@ -453,8 +478,6 @@ struct Packer {
       case OpCode::SET_ATTR:
       case OpCode::HAS_ATTR:
       case OpCode::STR:
-      case OpCode::BUILD_VECTOR:
-      case OpCode::GET_INDEX:
       case OpCode::SET_INDEX:
       case OpCode::GET_SLICE:
       case OpCode::SET_SLICE:
@@ -485,6 +508,7 @@ struct Packer {
       case Action::EMIT_TRIVIAL: out_size = 1; break;
       case Action::EMIT_CONST: out_size = 2; break;
       case Action::EMIT_LOCAL: out_size = 2; break;
+      case Action::EMIT_VECTOR: out_size = 2; break;
       case Action::EMIT_GLOBAL_ID:
       case Action::FOLD_CLASSMEMBER:
       case Action::FOLD_VECTOR_ELEMENT:
@@ -540,6 +564,7 @@ struct Packer {
         out_fn.code.push_back(s.operand_extra);
         break;
       case Action::EMIT_LOCAL:
+      case Action::EMIT_VECTOR:
         out_fn.code.push_back(static_cast<std::uint8_t>(s.out_op));
         out_fn.code.push_back(s.operand_extra);
         break;
@@ -627,6 +652,11 @@ struct Packer {
       case DeviceOpCode::GET_LOCAL: delta = +1; sz = 2; break;
       case DeviceOpCode::SET_LOCAL: delta = 0; sz = 2; break;
       case DeviceOpCode::GET_GLOBAL_ID: delta = +1; sz = 3; break;
+      case DeviceOpCode::BUILD_VECTOR:
+        delta = 1 - static_cast<int>(out_fn.code[pi + 1]);
+        sz = 2;
+        break;
+      case DeviceOpCode::GET_INDEX: delta = -1; break;
       case DeviceOpCode::JUMP_IF_FALSE: delta = 0; sz = 3; break;
       case DeviceOpCode::JUMP: delta = 0; sz = 3; break;
       case DeviceOpCode::LOOP: delta = 0; sz = 3; break;

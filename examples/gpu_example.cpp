@@ -52,14 +52,14 @@ inline int run_test() {
 
   // 1. Build a host VM and parse a small script with classes, globals, and
   //    two functions. `poly(x)` is the entry point; the packer will pull
-  //    `dot` along automatically.
+  //    `dot` along automatically. `poly` returns an inline vector.
   pips::VM vm;
   const char *src =
       "class Cfg { var x = 3; var y = 4; }\n"
       "var cfg = new Cfg { };\n"
       "var bias = 10;\n"
       "fn dot() { return cfg.x * cfg.x + cfg.y * cfg.y + bias; }\n"
-      "fn poly(x) { return dot() + x * x; }\n";
+      "fn poly(x) { return [dot() + x * x, x, bias]; }\n";
   if (vm.interpret(src) != pips::InterpretResult::OK) {
     std::fprintf(stderr, "host interpret failed\n");
     return 1;
@@ -129,9 +129,11 @@ inline int run_test() {
 
   int failures = 0;
   for (int i = 0; i < N; ++i) {
-    // Host-side reference: dot() == 3*3 + 4*4 + 10 == 35, poly(i) == 35 + i*i.
-    double expected = 3.0 * 3.0 + 4.0 * 4.0 + 10.0 +
-                      static_cast<double>(i) * static_cast<double>(i);
+    // Host-side reference: dot() == 35 and poly(i) == [35 + i*i, i, 10].
+    double expected[] = {
+      3.0 * 3.0 + 4.0 * 4.0 + 10.0 +
+        static_cast<double>(i) * static_cast<double>(i),
+      static_cast<double>(i), 10.0};
     if (h_status[i] !=
         static_cast<std::uint8_t>(pips::device::DeviceStatus::OK)) {
       std::fprintf(stderr, "  thread %d: status=%u\n", i,
@@ -139,18 +141,24 @@ inline int run_test() {
       ++failures;
       continue;
     }
-    if (!pips::device::dv_is_number(h_results[i])) {
-      std::fprintf(stderr, "  thread %d: result is not a NUMBER (type=%u)\n", i,
-                   static_cast<unsigned>(h_results[i].type));
+    if (!pips::device::dv_is_vector(h_results[i]) ||
+        pips::device::dv_vector_length(h_results[i]) != 3) {
+      std::fprintf(stderr,
+                   "  thread %d: result is not a length-3 VECTOR (type=%u)\n",
+                   i, static_cast<unsigned>(h_results[i].type));
       ++failures;
       continue;
     }
-    double got = static_cast<double>(pips::device::dv_as_number(h_results[i]));
-    double tol = 1e-9 * (1.0 + std::abs(expected));
-    if (std::abs(got - expected) > tol) {
-      std::fprintf(stderr, "  thread %d: got %.17g expected %.17g\n", i, got,
-                   expected);
-      ++failures;
+    for (std::uint8_t j = 0; j < 3; ++j) {
+      double got = static_cast<double>(
+          pips::device::dv_vector_element(h_results[i], j));
+      double tol = 1e-9 * (1.0 + std::abs(expected[j]));
+      if (std::abs(got - expected[j]) > tol) {
+        std::fprintf(stderr,
+                     "  thread %d element %u: got %.17g expected %.17g\n",
+                     i, static_cast<unsigned>(j), got, expected[j]);
+        ++failures;
+      }
     }
   }
 

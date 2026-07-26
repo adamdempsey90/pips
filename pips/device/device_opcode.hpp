@@ -56,6 +56,8 @@ enum class DeviceOpCode : std::uint8_t {
   JUMP,
   LOOP,
   CALL_ID,
+  BUILD_VECTOR,
+  GET_INDEX,
   RETURN,
 };
 
