@@ -88,6 +88,7 @@ enum OpCode {
   HAS_ATTR,
   STR,
   CALL_METHOD,
+  CALL_METHOD_LOCAL,
   BUILD_VECTOR,
   GET_INDEX,
   SET_INDEX,
@@ -326,6 +327,16 @@ struct Chunk {
       printValue(constants[name_const]);
       printf("'\n");
       return i + 3;
+    }
+    case OpCode::CALL_METHOD_LOCAL: {
+      const auto name_const = code[i + 1];
+      const auto argc = code[i + 2];
+      const auto slot = code[i + 3];
+      printf("%-20s name=%d argc=%d slot=%d '", "OP_CALL_METHOD_LOCAL",
+             name_const, argc, slot);
+      printValue(constants[name_const]);
+      printf("'\n");
+      return i + 4;
     }
     case OpCode::BUILD_VECTOR: {
       const auto count = code[i + 1];

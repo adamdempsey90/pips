@@ -27,7 +27,8 @@ This path exists for GPU execution, not for the full dynamic runtime. The device
 
 Device vectors store their elements directly inside `DeviceValue`; they never
 contain host or device pointers and require no allocation. Their runtime length
-cannot change. `PIPS_DEVICE_VECTOR_MAX` controls the inline capacity and
+can change through `push` and `pop` on direct local variables and function
+arguments. `PIPS_DEVICE_VECTOR_MAX` controls the inline capacity and
 defaults to 8. It must have the same value in every translation unit that
 creates, uploads, or executes device values.
 
@@ -35,7 +36,8 @@ creates, uploads, or executes device values.
 
 - Device vectors contain numbers only; mixed, string, boolean, and nested vectors are rejected
 - Strings, general instances, allocation, and printing are not device-runtime features
-- Vector mutation, slicing, resizing, and dynamic constructors such as `range`, `linspace`, `zeros`, and `ones` are not supported
+- Indexed mutation, slicing, general resizing, and dynamic constructors such as `range`, `linspace`, `zeros`, and `ones` are not supported
+- `push` and `pop` mutation requires a direct local variable or function argument; globals, captured outers, fields, indexed receivers, and temporary expressions cannot be mutated on device
 - Vector ordering, bitwise vector operations, and vector forms of `atan2`, `min`, `max`, and integer division are not supported
 - Globals are read-only from the device packer's point of view; code that writes globals is rejected
 - The entry point must be a named compiled function present in the host VM
@@ -76,6 +78,23 @@ scalar/vector broadcasting in either operand order. Unary sign and the
 supported unary math functions operate elementwise. Equality compares vector
 lengths and elements and returns one boolean. Indexing accepts a runtime
 numeric index and supports the host VM's negative-index convention.
+
+Device vectors also support `len()`/`size()`, `push(number)`, and `pop()`:
+
+```pips
+fn update(v, x) {
+  v.push(x);       # mutates v and returns nil
+  var last = v.pop(); # mutates v and returns the removed number
+  return v;
+}
+```
+
+`push` reports `VECTOR_CAPACITY_EXCEEDED` rather than exceeding
+`PIPS_DEVICE_VECTOR_MAX`; `pop` reports `VECTOR_EMPTY` on an empty vector.
+Unlike host vectors, inline device vectors do not alias one another. Mutation
+is therefore restricted to a direct local/argument slot that the compiler can
+identify. String methods and the string-returning vector method `join` are
+host-only and are rejected by the device packer.
 
 Construct and inspect vector arguments/results from C++ with the device value
 helpers:

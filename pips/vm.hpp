@@ -28,6 +28,7 @@
 #include "types.hpp"
 #include "utils.hpp"
 #include "value.hpp"
+#include "value_methods.hpp"
 
 namespace pips {
 
@@ -388,6 +389,244 @@ struct VM {
     hiOut = static_cast<size_t>(h);
     return true;
   }
+
+  bool methodArity(const std::string &name, std::uint8_t argc,
+                   std::uint8_t minArgs, std::uint8_t maxArgs) {
+    if (argc >= minArgs && argc <= maxArgs) return true;
+    if (minArgs == maxArgs) {
+      runtimeError("Method '%s' expects %u argument(s), got %u.", name.c_str(),
+                   static_cast<unsigned>(minArgs),
+                   static_cast<unsigned>(argc));
+    } else {
+      runtimeError("Method '%s' expects %u to %u arguments, got %u.",
+                   name.c_str(), static_cast<unsigned>(minArgs),
+                   static_cast<unsigned>(maxArgs),
+                   static_cast<unsigned>(argc));
+    }
+    return false;
+  }
+
+  bool methodStringArg(const std::string &method, Value value,
+                       std::string &out) {
+    if (!IS_STRING(value)) {
+      runtimeError("Method '%s' expects string arguments.", method.c_str());
+      return false;
+    }
+    out = AS_STD_STRING(value);
+    return true;
+  }
+
+  static bool valueString(Value value, std::string &out) {
+    switch (value.type) {
+    case ValueType::BOOL:
+      out = AS_BOOL(value) ? "true" : "false";
+      return true;
+    case ValueType::NUMBER: {
+      char buffer[64];
+      std::snprintf(buffer, sizeof(buffer), "%.16lg",
+                    static_cast<double>(AS_NUMBER(value)));
+      out = buffer;
+      return true;
+    }
+    case ValueType::STRING:
+      out = AS_STD_STRING(value);
+      return true;
+    case ValueType::NIL:
+      out = "nil";
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  InterpretResult callVectorMethod(const std::string &name,
+                                   std::uint8_t argc) {
+    Value *receiverSlot = stackTop - argc - 1;
+    VectorObject *vector = AS_VECTOR(*receiverSlot);
+    if (is_vector_length_method(name)) {
+      if (!methodArity(name, argc, 0, 0))
+        return InterpretResult::RUNTIME_ERROR;
+      *receiverSlot = NUMBER_VAL(static_cast<Real>(vector->elements.size()));
+      stackTop = receiverSlot + 1;
+      return InterpretResult::OK;
+    }
+    if (name == "push") {
+      if (!methodArity(name, argc, 1, 1))
+        return InterpretResult::RUNTIME_ERROR;
+      Value value = receiverSlot[1];
+      vector->elements.push_back(value);
+      *receiverSlot = NIL_VAL;
+      stackTop = receiverSlot + 1;
+      return InterpretResult::OK;
+    }
+    if (name == "pop") {
+      if (!methodArity(name, argc, 0, 0))
+        return InterpretResult::RUNTIME_ERROR;
+      if (vector->elements.empty()) {
+        runtimeError("Cannot pop from an empty vector.");
+        return InterpretResult::RUNTIME_ERROR;
+      }
+      Value value = vector->elements.back();
+      vector->elements.pop_back();
+      *receiverSlot = value;
+      stackTop = receiverSlot + 1;
+      return InterpretResult::OK;
+    }
+    if (name == "join") {
+      if (!methodArity(name, argc, 1, 1))
+        return InterpretResult::RUNTIME_ERROR;
+      std::string separator;
+      if (!methodStringArg(name, receiverSlot[1], separator))
+        return InterpretResult::RUNTIME_ERROR;
+      std::string joined;
+      for (std::size_t i = 0; i < vector->elements.size(); ++i) {
+        std::string element;
+        if (!valueString(vector->elements[i], element)) {
+          runtimeError("Method 'join' cannot convert vector element %zu to a "
+                       "string.",
+                       i);
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        if (i != 0) joined += separator;
+        joined += element;
+      }
+      *receiverSlot = STRING_VAL(newString(std::move(joined)));
+      stackTop = receiverSlot + 1;
+      return InterpretResult::OK;
+    }
+    runtimeError("Undefined vector method '%s'.", name.c_str());
+    return InterpretResult::RUNTIME_ERROR;
+  }
+
+  static bool asciiWhitespace(unsigned char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' ||
+           c == '\v';
+  }
+
+  InterpretResult callStringMethod(const std::string &name,
+                                   std::uint8_t argc) {
+    Value *receiverSlot = stackTop - argc - 1;
+    const std::string source = AS_STD_STRING(*receiverSlot);
+    Value result = NIL_VAL;
+
+    if (is_vector_length_method(name)) {
+      if (!methodArity(name, argc, 0, 0))
+        return InterpretResult::RUNTIME_ERROR;
+      result = NUMBER_VAL(static_cast<Real>(source.size()));
+    } else if (name == "lower" || name == "upper") {
+      if (!methodArity(name, argc, 0, 0))
+        return InterpretResult::RUNTIME_ERROR;
+      std::string transformed = source;
+      for (char &c : transformed) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        if (name == "lower" && uc >= 'A' && uc <= 'Z')
+          c = static_cast<char>(uc + ('a' - 'A'));
+        else if (name == "upper" && uc >= 'a' && uc <= 'z')
+          c = static_cast<char>(uc - ('a' - 'A'));
+      }
+      result = STRING_VAL(newString(std::move(transformed)));
+    } else if (name == "strip" || name == "lstrip" || name == "rstrip") {
+      if (!methodArity(name, argc, 0, 1))
+        return InterpretResult::RUNTIME_ERROR;
+      std::string chars;
+      if (argc == 1 && !methodStringArg(name, receiverSlot[1], chars))
+        return InterpretResult::RUNTIME_ERROR;
+      auto trimChar = [&](char c) {
+        return argc == 0
+                   ? asciiWhitespace(static_cast<unsigned char>(c))
+                   : chars.find(c) != std::string::npos;
+      };
+      std::size_t first = 0;
+      std::size_t last = source.size();
+      if (name != "rstrip")
+        while (first < last && trimChar(source[first])) ++first;
+      if (name != "lstrip")
+        while (last > first && trimChar(source[last - 1])) --last;
+      result = STRING_VAL(newString(source.substr(first, last - first)));
+    } else if (name == "starts_with" || name == "ends_with" ||
+               name == "contains") {
+      if (!methodArity(name, argc, 1, 1))
+        return InterpretResult::RUNTIME_ERROR;
+      std::string needle;
+      if (!methodStringArg(name, receiverSlot[1], needle))
+        return InterpretResult::RUNTIME_ERROR;
+      bool matches = false;
+      if (name == "starts_with")
+        matches = source.size() >= needle.size() &&
+                  source.compare(0, needle.size(), needle) == 0;
+      else if (name == "ends_with")
+        matches = source.size() >= needle.size() &&
+                  source.compare(source.size() - needle.size(), needle.size(),
+                                 needle) == 0;
+      else
+        matches = source.find(needle) != std::string::npos;
+      result = BOOL_VAL(matches);
+    } else if (name == "replace") {
+      if (!methodArity(name, argc, 2, 2))
+        return InterpretResult::RUNTIME_ERROR;
+      std::string needle;
+      std::string replacement;
+      if (!methodStringArg(name, receiverSlot[1], needle) ||
+          !methodStringArg(name, receiverSlot[2], replacement))
+        return InterpretResult::RUNTIME_ERROR;
+      if (needle.empty()) {
+        runtimeError("Method 'replace' does not accept an empty search string.");
+        return InterpretResult::RUNTIME_ERROR;
+      }
+      std::string replaced = source;
+      std::size_t pos = 0;
+      while ((pos = replaced.find(needle, pos)) != std::string::npos) {
+        replaced.replace(pos, needle.size(), replacement);
+        pos += replacement.size();
+      }
+      result = STRING_VAL(newString(std::move(replaced)));
+    } else if (name == "split") {
+      if (!methodArity(name, argc, 0, 1))
+        return InterpretResult::RUNTIME_ERROR;
+      VectorObject *parts = newVector();
+      if (argc == 0) {
+        std::size_t pos = 0;
+        while (pos < source.size()) {
+          while (pos < source.size() &&
+                 asciiWhitespace(static_cast<unsigned char>(source[pos])))
+            ++pos;
+          if (pos == source.size()) break;
+          std::size_t end = pos;
+          while (end < source.size() &&
+                 !asciiWhitespace(static_cast<unsigned char>(source[end])))
+            ++end;
+          parts->elements.push_back(
+              STRING_VAL(newString(source.substr(pos, end - pos))));
+          pos = end;
+        }
+      } else {
+        std::string separator;
+        if (!methodStringArg(name, receiverSlot[1], separator))
+          return InterpretResult::RUNTIME_ERROR;
+        if (separator.empty()) {
+          runtimeError("Method 'split' does not accept an empty separator.");
+          return InterpretResult::RUNTIME_ERROR;
+        }
+        std::size_t pos = 0;
+        while (true) {
+          std::size_t end = source.find(separator, pos);
+          parts->elements.push_back(STRING_VAL(newString(source.substr(
+              pos, end == std::string::npos ? std::string::npos : end - pos))));
+          if (end == std::string::npos) break;
+          pos = end + separator.size();
+        }
+      }
+      result = VECTOR_VAL(parts);
+    } else {
+      runtimeError("Undefined string method '%s'.", name.c_str());
+      return InterpretResult::RUNTIME_ERROR;
+    }
+
+    *receiverSlot = result;
+    stackTop = receiverSlot + 1;
+    return InterpretResult::OK;
+  }
+
   InterpretResult run(VTable &locals, Value *outResult = nullptr) {
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
@@ -975,24 +1214,7 @@ struct VM {
       case OpCode::STR: {
         Value v = pop();
         std::string s;
-        switch (v.type) {
-        case ValueType::BOOL:
-          s = AS_BOOL(v) ? "true" : "false";
-          break;
-        case ValueType::NUMBER: {
-          char buf[64];
-          std::snprintf(buf, sizeof(buf), "%.16lg",
-                        static_cast<double>(AS_NUMBER(v)));
-          s = buf;
-          break;
-        }
-        case ValueType::STRING:
-          s = AS_STRING(v);
-          break;
-        case ValueType::NIL:
-          s = "nil";
-          break;
-        default:
+        if (!valueString(v, s)) {
           runtimeError("str: unsupported value type.");
           return InterpretResult::RUNTIME_ERROR;
         }
@@ -1000,13 +1222,26 @@ struct VM {
           return InterpretResult::RUNTIME_ERROR;
         break;
       }
-      case OpCode::CALL_METHOD: {
+      case OpCode::CALL_METHOD:
+      case OpCode::CALL_METHOD_LOCAL: {
+        bool hasLocalOperand = instruction == OpCode::CALL_METHOD_LOCAL;
         std::string mname = AS_STRING(chunk->constants[(*ip++)]);
         std::uint8_t argc = *ip++;
+        if (hasLocalOperand) ++ip; // Used only by the device packer.
         // Receiver sits just below the args.
         Value recv = stackTop[-1 - argc];
+        if (IS_VECTOR(recv)) {
+          InterpretResult result = callVectorMethod(mname, argc);
+          if (result != InterpretResult::OK) return result;
+          break;
+        }
+        if (IS_STRING(recv)) {
+          InterpretResult result = callStringMethod(mname, argc);
+          if (result != InterpretResult::OK) return result;
+          break;
+        }
         if (!IS_INSTANCE(recv)) {
-          runtimeError("Only instances have methods.");
+          runtimeError("This value type has no method '%s'.", mname.c_str());
           return InterpretResult::RUNTIME_ERROR;
         }
         Instance *inst = AS_INSTANCE(recv);

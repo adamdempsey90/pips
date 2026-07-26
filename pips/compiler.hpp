@@ -22,6 +22,7 @@
 #include "types.hpp"
 #include "utils.hpp"
 #include "value.hpp"
+#include "value_methods.hpp"
 
 namespace pips {
 // #define DEBUG_PRINT_CODE
@@ -137,6 +138,7 @@ struct Compiler {
   std::unordered_map<std::string, ClassDef> *classTable = nullptr;
   ClassDef *currentClass = nullptr;
   bool inClassInit = false;
+  int directReceiverLocal = -1;
   char end_line = ';';
 
   // clang-format off
@@ -471,6 +473,7 @@ struct Compiler {
   Chunk *currentChunk() { return &current->function->chunk; }
 
   void emitByte(std::uint8_t byte) {
+    directReceiverLocal = -1;
     currentChunk()->write(byte, parser.previous.line);
   }
   void emitBytes(std::uint8_t byte1, std::uint8_t byte2) {
@@ -716,6 +719,7 @@ struct Compiler {
       if (match(TokenType::MINUS_MINUS))  { incDec(OpCode::SUBTRACT);   return; }
     }
     emitGet();
+    if (kind == LOCAL) directReceiverLocal = localArg;
   }
   // Prefix ++x / --x
   void preIncDec(OpCode op) {
@@ -823,15 +827,24 @@ struct Compiler {
   }
 
   void dot(bool canAssign) {
+    const int receiverLocal = directReceiverLocal;
     parser.consume(TokenType::IDENTIFIER, "Expect property name after '.'.");
     Token nameTok = parser.previous;
+    std::string methodName(nameTok.start, nameTok.length);
     std::uint8_t nameConst = identifierConstant(&nameTok);
     if (check(TokenType::LEFT_PAREN)) {
       parser.advance(); // '('
       std::uint8_t argc = argumentList();
-      emitByte(OpCode::CALL_METHOD);
-      emitByte(nameConst);
-      emitByte(argc);
+      if (receiverLocal >= 0 && is_vector_mutating_method(methodName)) {
+        emitByte(OpCode::CALL_METHOD_LOCAL);
+        emitByte(nameConst);
+        emitByte(argc);
+        emitByte(static_cast<std::uint8_t>(receiverLocal));
+      } else {
+        emitByte(OpCode::CALL_METHOD);
+        emitByte(nameConst);
+        emitByte(argc);
+      }
       return;
     }
     if (canAssign && match(TokenType::EQUAL)) {

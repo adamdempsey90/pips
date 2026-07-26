@@ -462,6 +462,55 @@ private:
           return DeviceStatus::STACK_OVERFLOW;
         break;
       }
+      case OC::VECTOR_LEN: {
+        if (sp < 1) return DeviceStatus::STACK_UNDERFLOW;
+        DeviceValue &vector = stack[sp - 1];
+        if (!dv_is_vector(vector)) return DeviceStatus::TYPE_ERROR;
+        if (!dv_vector_is_valid(vector)) return DeviceStatus::INVALID_VECTOR;
+        vector = dv_number(static_cast<DeviceReal>(vector.as.vector.length));
+        break;
+      }
+      case OC::VECTOR_PUSH_LOCAL: {
+        if (ip >= code_end) return DeviceStatus::BAD_OPCODE;
+        std::uint8_t slot = code[ip++];
+        if (sp < 2) return DeviceStatus::STACK_UNDERFLOW;
+        std::uint32_t idx = frame->frame_base + slot;
+        if (idx >= static_cast<std::uint32_t>(sp - 2))
+          return DeviceStatus::BAD_LOCAL_SLOT;
+        DeviceValue &target = stack[idx];
+        const DeviceValue &receiver = stack[sp - 2];
+        const DeviceValue &value = stack[sp - 1];
+        if (!dv_is_vector(target) || !dv_is_vector(receiver) ||
+            !dv_is_number(value))
+          return DeviceStatus::TYPE_ERROR;
+        if (!dv_vector_is_valid(target) || !dv_vector_is_valid(receiver))
+          return DeviceStatus::INVALID_VECTOR;
+        if (target.as.vector.length >= PIPS_DEVICE_VECTOR_MAX)
+          return DeviceStatus::VECTOR_CAPACITY_EXCEEDED;
+        target.as.vector.elements[target.as.vector.length++] = value.as.n;
+        sp -= 2;
+        if (!push(dv_nil())) return DeviceStatus::STACK_OVERFLOW;
+        break;
+      }
+      case OC::VECTOR_POP_LOCAL: {
+        if (ip >= code_end) return DeviceStatus::BAD_OPCODE;
+        std::uint8_t slot = code[ip++];
+        if (sp < 1) return DeviceStatus::STACK_UNDERFLOW;
+        std::uint32_t idx = frame->frame_base + slot;
+        if (idx >= static_cast<std::uint32_t>(sp - 1))
+          return DeviceStatus::BAD_LOCAL_SLOT;
+        DeviceValue &target = stack[idx];
+        const DeviceValue &receiver = stack[sp - 1];
+        if (!dv_is_vector(target) || !dv_is_vector(receiver))
+          return DeviceStatus::TYPE_ERROR;
+        if (!dv_vector_is_valid(target) || !dv_vector_is_valid(receiver))
+          return DeviceStatus::INVALID_VECTOR;
+        if (target.as.vector.length == 0) return DeviceStatus::VECTOR_EMPTY;
+        DeviceReal removed =
+            target.as.vector.elements[--target.as.vector.length];
+        stack[sp - 1] = dv_number(removed);
+        break;
+      }
       case OC::RETURN: {
         if (sp < 1) return DeviceStatus::STACK_UNDERFLOW;
         DeviceValue result = stack[--sp];

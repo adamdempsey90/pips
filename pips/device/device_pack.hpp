@@ -8,6 +8,7 @@
 #include "../function.hpp"
 #include "../object.hpp"
 #include "../value.hpp"
+#include "../value_methods.hpp"
 
 #include <cstdint>
 #include <deque>
@@ -48,6 +49,8 @@ inline int host_operand_size(OpCode op) {
   case OpCode::CALL:
   case OpCode::CALL_METHOD:
     return 2;
+  case OpCode::CALL_METHOD_LOCAL:
+    return 3;
   default:
     return 0;
   }
@@ -441,6 +444,39 @@ struct Packer {
         s.operand_extra = argc;
         break;
       }
+      case OpCode::CALL_METHOD:
+      case OpCode::CALL_METHOD_LOCAL: {
+        std::uint8_t name_idx = code[i + 1];
+        std::uint8_t argc = code[i + 2];
+        if (name_idx >= consts.size() ||
+            consts[name_idx].type != ValueType::STRING)
+          return fail("CALL_METHOD operand is not a string in '" + fn.name +
+                      "'.");
+        std::string method = consts[name_idx].as.string->str;
+        if (is_vector_length_method(method)) {
+          if (argc != 0)
+            return fail("Device vector method '" + method +
+                        "' expects 0 arguments.");
+          map_simple(OC::VECTOR_LEN);
+          break;
+        }
+        if (method == "push" || method == "pop") {
+          if (op != OpCode::CALL_METHOD_LOCAL)
+            return fail("Device vector method '" + method +
+                        "' requires a direct local or argument receiver.");
+          std::uint8_t expected = method == "push" ? 1 : 0;
+          if (argc != expected)
+            return fail("Device vector method '" + method + "' expects " +
+                        std::to_string(expected) + " argument(s).");
+          s.action = Action::EMIT_LOCAL;
+          s.out_op = method == "push" ? OC::VECTOR_PUSH_LOCAL
+                                       : OC::VECTOR_POP_LOCAL;
+          s.operand_extra = code[i + 3];
+          break;
+        }
+        return fail("Method '" + method +
+                    "' is not supported on the device.");
+      }
       case OpCode::JUMP_IF_FALSE:
       case OpCode::JUMP: {
         std::uint16_t off = static_cast<std::uint16_t>(
@@ -473,7 +509,6 @@ struct Packer {
                     "per-instance properties are not supported on the device.");
       case OpCode::SET_PROPERTY:
       case OpCode::NEW_INSTANCE:
-      case OpCode::CALL_METHOD:
       case OpCode::GET_ATTR:
       case OpCode::SET_ATTR:
       case OpCode::HAS_ATTR:
@@ -657,6 +692,9 @@ struct Packer {
         sz = 2;
         break;
       case DeviceOpCode::GET_INDEX: delta = -1; break;
+      case DeviceOpCode::VECTOR_LEN: delta = 0; break;
+      case DeviceOpCode::VECTOR_PUSH_LOCAL: delta = -1; sz = 2; break;
+      case DeviceOpCode::VECTOR_POP_LOCAL: delta = 0; sz = 2; break;
       case DeviceOpCode::JUMP_IF_FALSE: delta = 0; sz = 3; break;
       case DeviceOpCode::JUMP: delta = 0; sz = 3; break;
       case DeviceOpCode::LOOP: delta = 0; sz = 3; break;

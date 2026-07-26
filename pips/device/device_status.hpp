@@ -22,6 +22,8 @@ enum class DeviceStatus : std::uint8_t {
   INVALID_VECTOR,
   INDEX_OUT_OF_RANGE,
   VECTOR_LENGTH_MISMATCH,
+  VECTOR_CAPACITY_EXCEEDED,
+  VECTOR_EMPTY,
 };
 
 } // namespace device
