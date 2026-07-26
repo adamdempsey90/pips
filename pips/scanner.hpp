@@ -185,15 +185,15 @@ struct Scanner {
     current++;
     return true;
   }
-  Token string() {
-    while ((peek() != '"') && (*current != '\0')) {
+  Token string(char quote) {
+    while ((peek() != quote) && (*current != '\0')) {
       if (peek() == '\n')
         line++;
       advance();
     }
     if (*current == '\0')
       return Token("Unterminated string.", line);
-    advance(); // past the "
+    advance(); // past the closing quote
     return Token(TokenType::STRING, start, current, line);
   }
 
@@ -210,16 +210,6 @@ struct Scanner {
         advance();
         break;
       }
-        // disallow // comments for integer divide
-        // case '/': {
-        //  if (peekNext() == '/') {
-        //    while (peek() != '\n' && !(*current == '\0')) advance();
-        //  }
-        //  else {
-        //    return;
-        //  }
-        //  break;
-        //}
       case '#': {
         while (peek() != '\n' && !(*current == '\0'))
           advance();
@@ -601,7 +591,9 @@ struct Scanner {
         return Token(TokenType::GREATER, start, current, line);
       }
     case '"':
-      return string();
+      return string('"');
+    case '\'':
+      return string('\'');
     }
     return Token("Unexpected character!", line);
   }

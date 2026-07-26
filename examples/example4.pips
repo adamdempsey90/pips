@@ -19,3 +19,17 @@ print(v[2:]);
 # Slice assignment replaces a contiguous range.
 v[1:3] = [7, 8];
 print(v);
+
+# Vector methods expose length and mutating stack-like operations.
+print(v.len(), v.size());
+var push_result = v.push(50);
+print(push_result, v); # push returns nil
+print(v.pop(), v);     # pop returns the removed value
+print(v.join(" -> ")); # join converts scalar elements to strings
+
+# String methods return new strings; the original remains unchanged.
+var text = "  One two one  ";
+print(text.strip(), text.lower(), text.upper());
+print(text.starts_with("  One"), text.ends_with("  "));
+print(text.contains("two"), text.replace("one", "1"));
+print(text.split(), "a,,b,".split(","));

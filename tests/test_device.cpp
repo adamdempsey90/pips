@@ -413,7 +413,144 @@ void test_vector_capacity() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 10: using print() is rejected.
+// Test 10: vector methods mutate direct local/argument slots on device.
+// ---------------------------------------------------------------------------
+void test_vector_methods() {
+  pips::VM vm;
+  const char *src =
+      "var global_vector = [1, 2];\n"
+      "fn push_result(v, x) { return v.push(x); }\n"
+      "fn push_value(v, x) { v.push(x); return v; }\n"
+      "fn pop_result(v) { return v.pop(); }\n"
+      "fn pop_value(v) { v.pop(); return v; }\n"
+      "fn lengths(v) { return v.len() + v.size(); }\n"
+      "fn helper(v, x) { v.push(x); return v; }\n"
+      "fn nested(v, x) { return helper(v, x); }\n"
+      "fn bad_global() { global_vector.push(3); return global_vector; }\n"
+      "fn bad_temporary() { [1].push(2); return nil; }\n"
+      "fn bad_string(s) { return s.lower(); }\n"
+      "fn bad_join(v) { return v.join(\",\"); }\n";
+  expect_ok("test10.interpret",
+            vm.interpret(src) == pips::InterpretResult::OK);
+
+  const dv::DeviceReal initial_values[] = {1, 2};
+  dv::DeviceValue initial{};
+  dv::dv_vector(initial_values, 2, initial);
+  dv::DeviceValue result{};
+  dv::DeviceValue args[] = {initial, dv::dv_number(3)};
+  dv::DeviceVM dvm;
+  dv::DeviceModuleStorage store;
+  std::uint32_t entry_id = 0;
+  std::string err;
+
+  bool ok = dv::pack_function(vm, "push_result", store, entry_id, err);
+  expect_ok("test10.pack_push_result", ok, err);
+  if (!ok) return;
+  auto st = dvm.run(store.view(), entry_id, args, 2, &result);
+  expect_ok("test10.push_returns_nil",
+            st == dv::DeviceStatus::OK && dv::dv_is_nil(result));
+  expect_ok("test10.argument_copy_unchanged",
+            dv::dv_vector_length(initial) == 2);
+
+  ok = dv::pack_function(vm, "push_value", store, entry_id, err);
+  expect_ok("test10.pack_push_value", ok, err);
+  if (!ok) return;
+  st = dvm.run(store.view(), entry_id, args, 2, &result);
+  const double pushed[] = {1, 2, 3};
+  expect_ok("test10.push_mutates_slot",
+            st == dv::DeviceStatus::OK && vector_eq(result, pushed, 3));
+
+  ok = dv::pack_function(vm, "pop_result", store, entry_id, err);
+  expect_ok("test10.pack_pop_result", ok, err);
+  if (!ok) return;
+  st = dvm.run(store.view(), entry_id, &initial, 1, &result);
+  expect_ok("test10.pop_returns_removed",
+            st == dv::DeviceStatus::OK && dv::dv_is_number(result) &&
+                approx_eq(dv::dv_as_number(result), 2));
+
+  ok = dv::pack_function(vm, "pop_value", store, entry_id, err);
+  expect_ok("test10.pack_pop_value", ok, err);
+  if (!ok) return;
+  st = dvm.run(store.view(), entry_id, &initial, 1, &result);
+  const double popped[] = {1};
+  expect_ok("test10.pop_mutates_slot",
+            st == dv::DeviceStatus::OK && vector_eq(result, popped, 1));
+
+  ok = dv::pack_function(vm, "lengths", store, entry_id, err);
+  expect_ok("test10.pack_lengths", ok, err);
+  if (!ok) return;
+  st = dvm.run(store.view(), entry_id, &initial, 1, &result);
+  expect_ok("test10.length_aliases",
+            st == dv::DeviceStatus::OK && dv::dv_is_number(result) &&
+                approx_eq(dv::dv_as_number(result), 4));
+
+  ok = dv::pack_function(vm, "nested", store, entry_id, err);
+  expect_ok("test10.pack_nested", ok, err);
+  if (!ok) return;
+  st = dvm.run(store.view(), entry_id, args, 2, &result);
+  expect_ok("test10.nested_frame_slot",
+            st == dv::DeviceStatus::OK && vector_eq(result, pushed, 3));
+
+  ok = dv::pack_function(vm, "bad_global", store, entry_id, err);
+  expect_ok("test10.reject_global_mutation", !ok,
+            "expected direct-local receiver error");
+  ok = dv::pack_function(vm, "bad_temporary", store, entry_id, err);
+  expect_ok("test10.reject_temporary_mutation", !ok,
+            "expected direct-local receiver error");
+  ok = dv::pack_function(vm, "bad_string", store, entry_id, err);
+  expect_ok("test10.reject_string_method", !ok,
+            "expected unsupported method error");
+  ok = dv::pack_function(vm, "bad_join", store, entry_id, err);
+  expect_ok("test10.reject_join", !ok,
+            "expected host-only join rejection");
+}
+
+// ---------------------------------------------------------------------------
+// Test 11: device vector method failures have dedicated statuses.
+// ---------------------------------------------------------------------------
+void test_vector_method_failures() {
+  pips::VM vm;
+  const char *src =
+      "fn push(v, x) { return v.push(x); }\n"
+      "fn pop(v) { return v.pop(); }\n";
+  expect_ok("test11.interpret",
+            vm.interpret(src) == pips::InterpretResult::OK);
+  dv::DeviceModuleStorage store;
+  std::uint32_t entry_id = 0;
+  std::string err;
+  dv::DeviceVM dvm;
+  dv::DeviceValue result{};
+
+  bool ok = dv::pack_function(vm, "push", store, entry_id, err);
+  expect_ok("test11.pack_push", ok, err);
+  if (!ok) return;
+  dv::DeviceReal full_values[PIPS_DEVICE_VECTOR_MAX]{};
+  dv::DeviceValue full{};
+  dv::dv_vector(full_values, PIPS_DEVICE_VECTOR_MAX, full);
+  dv::DeviceValue push_args[] = {full, dv::dv_number(1)};
+  auto st = dvm.run(store.view(), entry_id, push_args, 2, &result);
+  expect_ok("test11.capacity",
+            st == dv::DeviceStatus::VECTOR_CAPACITY_EXCEEDED);
+  push_args[0] = dv::dv_number(1);
+  st = dvm.run(store.view(), entry_id, push_args, 2, &result);
+  expect_ok("test11.receiver_type", st == dv::DeviceStatus::TYPE_ERROR);
+  const dv::DeviceReal one_value[] = {1};
+  dv::dv_vector(one_value, 1, push_args[0]);
+  push_args[1] = dv::dv_bool(true);
+  st = dvm.run(store.view(), entry_id, push_args, 2, &result);
+  expect_ok("test11.element_type", st == dv::DeviceStatus::TYPE_ERROR);
+
+  ok = dv::pack_function(vm, "pop", store, entry_id, err);
+  expect_ok("test11.pack_pop", ok, err);
+  if (!ok) return;
+  dv::DeviceValue empty{};
+  dv::dv_vector(nullptr, 0, empty);
+  st = dvm.run(store.view(), entry_id, &empty, 1, &result);
+  expect_ok("test11.empty", st == dv::DeviceStatus::VECTOR_EMPTY);
+}
+
+// ---------------------------------------------------------------------------
+// Test 12: using print() is rejected.
 // ---------------------------------------------------------------------------
 void test_reject_print() {
   pips::VM vm;
@@ -449,6 +586,8 @@ int main() {
   test_vector_global_and_equality();
   test_vector_failures();
   test_vector_capacity();
+  test_vector_methods();
+  test_vector_method_failures();
   test_reject_print();
 
   std::printf("---\n");

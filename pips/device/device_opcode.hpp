@@ -58,6 +58,9 @@ enum class DeviceOpCode : std::uint8_t {
   CALL_ID,
   BUILD_VECTOR,
   GET_INDEX,
+  VECTOR_LEN,
+  VECTOR_PUSH_LOCAL,
+  VECTOR_POP_LOCAL,
   RETURN,
 };
 

@@ -173,6 +173,22 @@ print(greeting + " " + target);
 
 Use `str(value)` to convert values to strings.
 
+Strings also provide immutable utility methods. All transforming methods
+return new values; they do not modify the receiver:
+
+- `s.len()` and `s.size()` return the byte length.
+- `s.lower()` and `s.upper()` perform ASCII case conversion.
+- `s.strip([chars])`, `s.lstrip([chars])`, and `s.rstrip([chars])` trim ASCII
+  whitespace by default, or characters from the supplied string.
+- `s.starts_with(prefix)`, `s.ends_with(suffix)`, and `s.contains(text)` return
+  booleans.
+- `s.replace(old, replacement)` replaces all non-overlapping matches. `old`
+  must not be empty.
+- `s.split()` splits collapsed ASCII whitespace; `s.split(separator)` uses a
+  non-empty literal separator and preserves empty fields.
+
+These operations work on bytes rather than Unicode code points.
+
 ## Vectors, indexing, and slicing
 
 Vector literals use square brackets:
@@ -196,6 +212,21 @@ print(v[:2]);
 print(v[2:]);
 v[1:3] = [7, 8];
 ```
+
+Vectors provide stack-like methods:
+
+```pips
+print(v.len(), v.size());
+var ignored = v.push(50); # mutates v; ignored is nil
+var removed = v.pop();    # mutates v; removed is 50
+print([1, 2, 3].join(" + ")); # "1 + 2 + 3"
+```
+
+Host vectors have shared-reference semantics, so mutations are visible through
+aliases. `pop()` on an empty vector is a runtime error. The host-only
+`v.join(separator)` method converts each scalar element using the same rules as
+`str(value)`, places the required string separator between the elements, and
+returns a new string. Joining an empty vector returns an empty string.
 
 ## Built-in functions
 

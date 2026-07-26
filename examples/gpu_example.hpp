@@ -5,7 +5,8 @@
 //   1. On the host, compile a small pips script that defines a class with
 //      data members, a few globals, a helper function `dot()` that reads
 //      both the class members and a plain global, and a top-level
-//      `poly(x)` that calls `dot()` and returns a numeric vector.
+//      `poly(x)` that calls `dot()`, pushes into a local numeric vector, and
+//      returns it.
 //   2. Pack `poly` (and its transitive callee `dot`) into a flat
 //      `DeviceModule`.
 //   3. Copy the module's four byte/value tables to device memory and patch

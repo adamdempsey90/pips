@@ -59,7 +59,7 @@ inline int run_test() {
       "var cfg = new Cfg { };\n"
       "var bias = 10;\n"
       "fn dot() { return cfg.x * cfg.x + cfg.y * cfg.y + bias; }\n"
-      "fn poly(x) { return [dot() + x * x, x, bias]; }\n";
+      "fn poly(x) { var v = [dot() + x * x, x]; v.push(bias); return v; }\n";
   if (vm.interpret(src) != pips::InterpretResult::OK) {
     std::fprintf(stderr, "host interpret failed\n");
     return 1;

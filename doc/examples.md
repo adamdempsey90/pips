@@ -162,6 +162,18 @@ print(v[2:]);
 
 v[1:3] = [7, 8];
 print(v);
+
+print(v.len(), v.size());
+var push_result = v.push(50);
+print(push_result, v); # nil, then the extended vector
+print(v.pop(), v);     # removed value, then the shortened vector
+print(v.join(" -> "));
+
+var text = "  One two one  ";
+print(text.strip(), text.lower(), text.upper());
+print(text.starts_with("  One"), text.contains("two"));
+print(text.replace("one", "1"));
+print(text.split(), "a,,b,".split(","));
 ```
 
 ## 5. Vector generators
