@@ -34,18 +34,18 @@ struct DeviceVM {
   std::int32_t sp = 0; 
   std::int32_t fp = 0; 
 
-  PIPS_DEVICE_HOST_INLINE bool push(const DeviceValue &v) {
+  PIPS_DEVICE_HOST_FORCEINLINE bool push(const DeviceValue &v) {
     if (sp >= PIPS_DEVICE_STACK_MAX) return false;
     stack[sp++] = v;
     return true;
   }
-  PIPS_DEVICE_HOST_INLINE DeviceValue pop() { return stack[--sp]; }
-  PIPS_DEVICE_HOST_INLINE const DeviceValue &peek(int back) const {
+  PIPS_DEVICE_HOST_FORCEINLINE DeviceValue pop() { return stack[--sp]; }
+  PIPS_DEVICE_HOST_FORCEINLINE const DeviceValue &peek(int back) const {
     return stack[sp - 1 - back];
   }
 
   // Execute a packed function
-  PIPS_DEVICE_HOST DeviceStatus run(const DeviceModule &module,
+  PIPS_DEVICE_HOST_INLINE DeviceStatus run(const DeviceModule &module,
                                     std::uint32_t entry_id,
                                     const DeviceValue *args,
                                     std::uint32_t argc,
@@ -72,7 +72,7 @@ struct DeviceVM {
   }
 
 private:
-  PIPS_DEVICE_HOST_INLINE static DeviceStatus
+  PIPS_DEVICE_HOST_FORCEINLINE static DeviceStatus
   scalar_arith(DeviceOpCode op, DeviceReal a, DeviceReal b, DeviceReal &out) {
     switch (op) {
     case DeviceOpCode::ADD: out = a + b; return DeviceStatus::OK;
@@ -93,7 +93,7 @@ private:
     }
   }
 
-  PIPS_DEVICE_HOST_INLINE static DeviceStatus
+  PIPS_DEVICE_HOST_FORCEINLINE static DeviceStatus
   vector_arith(DeviceOpCode op, const DeviceValue &a, const DeviceValue &b,
                DeviceValue &out) {
     const bool av = dv_is_vector(a);
@@ -128,7 +128,7 @@ private:
     return DeviceStatus::OK;
   }
 
-  PIPS_DEVICE_HOST DeviceStatus dispatch(const DeviceModule &module,
+  PIPS_DEVICE_HOST_INLINE DeviceStatus dispatch(const DeviceModule &module,
                                          DeviceValue *out_result) {
     using OC = DeviceOpCode;
 
