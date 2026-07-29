@@ -45,28 +45,28 @@ struct DeviceValue {
   } as;
 };
 
-PIPS_DEVICE_HOST_INLINE DeviceValue dv_nil() {
+PIPS_DEVICE_HOST_FORCEINLINE DeviceValue dv_nil() {
   DeviceValue v{};
   v.type = DeviceValueType::NIL;
   v.as.n = 0;
   return v;
 }
 
-PIPS_DEVICE_HOST_INLINE DeviceValue dv_bool(bool x) {
+PIPS_DEVICE_HOST_FORCEINLINE DeviceValue dv_bool(bool x) {
   DeviceValue v{};
   v.type = DeviceValueType::BOOL;
   v.as.b = x;
   return v;
 }
 
-PIPS_DEVICE_HOST_INLINE DeviceValue dv_number(DeviceReal x) {
+PIPS_DEVICE_HOST_FORCEINLINE DeviceValue dv_number(DeviceReal x) {
   DeviceValue v{};
   v.type = DeviceValueType::NUMBER;
   v.as.n = x;
   return v;
 }
 
-PIPS_DEVICE_HOST_INLINE bool dv_vector(const DeviceReal *elements,
+PIPS_DEVICE_HOST_FORCEINLINE bool dv_vector(const DeviceReal *elements,
                                        std::uint32_t length,
                                        DeviceValue &out) {
   if (length > PIPS_DEVICE_VECTOR_MAX || (length > 0 && !elements))
@@ -80,37 +80,37 @@ PIPS_DEVICE_HOST_INLINE bool dv_vector(const DeviceReal *elements,
   return true;
 }
 
-PIPS_DEVICE_HOST_INLINE constexpr bool dv_is_nil(const DeviceValue &v) {
+PIPS_DEVICE_HOST_FORCEINLINE constexpr bool dv_is_nil(const DeviceValue &v) {
   return v.type == DeviceValueType::NIL;
 }
-PIPS_DEVICE_HOST_INLINE constexpr bool dv_is_bool(const DeviceValue &v) {
+PIPS_DEVICE_HOST_FORCEINLINE constexpr bool dv_is_bool(const DeviceValue &v) {
   return v.type == DeviceValueType::BOOL;
 }
-PIPS_DEVICE_HOST_INLINE constexpr bool dv_is_number(const DeviceValue &v) {
+PIPS_DEVICE_HOST_FORCEINLINE constexpr bool dv_is_number(const DeviceValue &v) {
   return v.type == DeviceValueType::NUMBER;
 }
-PIPS_DEVICE_HOST_INLINE constexpr bool dv_is_vector(const DeviceValue &v) {
+PIPS_DEVICE_HOST_FORCEINLINE constexpr bool dv_is_vector(const DeviceValue &v) {
   return v.type == DeviceValueType::VECTOR;
 }
-PIPS_DEVICE_HOST_INLINE constexpr bool dv_as_bool(const DeviceValue &v) {
+PIPS_DEVICE_HOST_FORCEINLINE constexpr bool dv_as_bool(const DeviceValue &v) {
   return v.as.b;
 }
-PIPS_DEVICE_HOST_INLINE constexpr DeviceReal dv_as_number(const DeviceValue &v) {
+PIPS_DEVICE_HOST_FORCEINLINE constexpr DeviceReal dv_as_number(const DeviceValue &v) {
   return v.as.n;
 }
-PIPS_DEVICE_HOST_INLINE constexpr std::uint8_t
+PIPS_DEVICE_HOST_FORCEINLINE constexpr std::uint8_t
 dv_vector_length(const DeviceValue &v) {
   return v.as.vector.length;
 }
-PIPS_DEVICE_HOST_INLINE constexpr DeviceReal
+PIPS_DEVICE_HOST_FORCEINLINE constexpr DeviceReal
 dv_vector_element(const DeviceValue &v, std::uint8_t index) {
   return v.as.vector.elements[index];
 }
-PIPS_DEVICE_HOST_INLINE constexpr bool dv_vector_is_valid(const DeviceValue &v) {
+PIPS_DEVICE_HOST_FORCEINLINE constexpr bool dv_vector_is_valid(const DeviceValue &v) {
   return !dv_is_vector(v) || v.as.vector.length <= PIPS_DEVICE_VECTOR_MAX;
 }
 
-PIPS_DEVICE_HOST_INLINE constexpr bool dv_is_falsey(const DeviceValue &v) {
+PIPS_DEVICE_HOST_FORCEINLINE constexpr bool dv_is_falsey(const DeviceValue &v) {
   return dv_is_nil(v) || (dv_is_bool(v) && !v.as.b);
 }
 
